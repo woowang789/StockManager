@@ -1,0 +1,7 @@
+plugins {
+    id 'stock.service'
+}
+
+dependencies {
+    implementation libs.spring.boot.starter.webmvc
+}

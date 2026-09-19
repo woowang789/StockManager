@@ -1,0 +1,10 @@
+plugins {
+    // src/main/groovy의 *.gradle 파일을 플러그인으로 만들어 준다
+    id 'groovy-gradle-plugin'
+}
+
+dependencies {
+    // convention plugin 안에서 적용할 플러그인들
+    implementation libs.spring.boot.gradle.plugin
+    implementation libs.spring.dependency.management.gradle.plugin
+}

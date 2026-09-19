@@ -1,0 +1,18 @@
+// 실행 가능한 Spring Boot 서비스 모듈에 적용하는 설정
+plugins {
+    id 'stock.java'
+    id 'org.springframework.boot'
+    // Spring Boot BOM을 가져와서 스타터 버전을 따로 적지 않아도 되게 한다
+    id 'io.spring.dependency-management'
+}
+
+// precompiled script plugin에서는 libs.xxx 접근자가 생기지 않아서 이름으로 찾는다
+def libs = extensions.getByType(VersionCatalogsExtension).named('libs')
+
+dependencies {
+    // 모든 서비스가 /actuator/health로 상태를 알린다
+    implementation libs.findLibrary('spring-boot-starter-actuator').get()
+
+    testImplementation libs.findLibrary('spring-boot-starter-test').get()
+    testRuntimeOnly libs.findLibrary('junit-platform-launcher').get()
+}

@@ -1,0 +1,16 @@
+pluginManagement {
+    // build-logic의 convention plugin(stock.java, stock.service)을 쓸 수 있게 연결한다
+    includeBuild 'build-logic'
+}
+
+dependencyResolutionManagement {
+    // 저장소는 여기서만 선언한다. 모듈에서 따로 선언하면 빌드가 실패한다
+    repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
+    repositories {
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'stock-manager'
+
+include 'services:inventory'

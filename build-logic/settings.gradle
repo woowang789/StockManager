@@ -1,0 +1,14 @@
+rootProject.name = 'build-logic'
+
+dependencyResolutionManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+    }
+    // 루트 프로젝트와 같은 버전 카탈로그를 쓴다
+    versionCatalogs {
+        libs {
+            from(files('../gradle/libs.versions.toml'))
+        }
+    }
+}
