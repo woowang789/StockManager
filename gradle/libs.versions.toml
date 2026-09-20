@@ -16,6 +16,7 @@ flyway-mysql = { module = "org.flywaydb:flyway-mysql" }
 mysql-connector-j = { module = "com.mysql:mysql-connector-j" }
 
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+spring-boot-starter-webmvc-test = { module = "org.springframework.boot:spring-boot-starter-webmvc-test" }
 spring-boot-testcontainers = { module = "org.springframework.boot:spring-boot-testcontainers" }
 testcontainers-mysql = { module = "org.testcontainers:testcontainers-mysql" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }

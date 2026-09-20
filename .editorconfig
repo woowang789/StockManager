@@ -1,0 +1,25 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{yml,yaml,json,toml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.bat]
+end_of_line = crlf
+
+[*.java]
+# 와일드카드 임포트를 쓰지 않는다. 어떤 클래스를 쓰는지 파일에서 바로 보이게 하기 위해서다
+ij_java_class_count_to_use_import_on_demand = 99
+ij_java_names_count_to_use_static_import_on_demand = 99
+# static 임포트를 먼저, 한 줄 띄우고 나머지를 알파벳 순으로
+ij_java_imports_layout = $*, |, *
