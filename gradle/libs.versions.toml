@@ -10,5 +10,12 @@ spring-dependency-management-gradle-plugin = { module = "io.spring.gradle:depend
 # 아래 라이브러리 버전은 Spring Boot BOM이 정한다
 spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 spring-boot-starter-webmvc = { module = "org.springframework.boot:spring-boot-starter-webmvc" }
+spring-boot-starter-jdbc = { module = "org.springframework.boot:spring-boot-starter-jdbc" }
+spring-boot-starter-flyway = { module = "org.springframework.boot:spring-boot-starter-flyway" }
+flyway-mysql = { module = "org.flywaydb:flyway-mysql" }
+mysql-connector-j = { module = "com.mysql:mysql-connector-j" }
+
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+spring-boot-testcontainers = { module = "org.springframework.boot:spring-boot-testcontainers" }
+testcontainers-mysql = { module = "org.testcontainers:testcontainers-mysql" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
