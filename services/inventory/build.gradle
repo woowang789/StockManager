@@ -5,6 +5,7 @@ plugins {
 dependencies {
     implementation libs.spring.boot.starter.webmvc
     implementation libs.spring.boot.starter.jdbc
+    implementation libs.spring.boot.starter.validation
     implementation libs.spring.boot.starter.flyway
     implementation libs.flyway.mysql
     runtimeOnly libs.mysql.connector.j
