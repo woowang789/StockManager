@@ -1,9 +1,15 @@
 package com.stockmanager.sales;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
+import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
+import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.github.tomakehurst.wiremock.WireMockServer;
 import com.stockmanager.sales.application.OrderService;
 import com.stockmanager.sales.domain.OrderLine;
+import com.stockmanager.sales.domain.OrderStatus;
 import com.stockmanager.sales.domain.SalesOrder;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -19,7 +25,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
-@Import(TestcontainersConfiguration.class)
+@Import({TestcontainersConfiguration.class, InventoryStubConfiguration.class})
 @SpringBootTest
 class OrderIdempotencyTest {
 
@@ -31,25 +37,32 @@ class OrderIdempotencyTest {
     @Autowired
     JdbcClient jdbcClient;
 
+    @Autowired
+    WireMockServer inventoryStub;
+
     @BeforeEach
     void clearOrders() {
         jdbcClient.sql("DELETE FROM sales_order_item").update();
         jdbcClient.sql("DELETE FROM sales_order").update();
+        inventoryStub.resetAll();
+        inventoryStub.stubFor(post("/reservations").willReturn(okJson("{\"movementId\":1}")));
     }
 
     @Test
-    @DisplayName("같은 주문번호로 다시 보내면 새로 만들지 않고 처음 주문을 돌려준다")
+    @DisplayName("같은 주문번호로 다시 보내면 처음 주문을 돌려주고 inventory는 다시 부르지 않는다")
     void returnsFirstOrderOnRetry() {
         SalesOrder first = orderService.place("ORD-1", List.of(new OrderLine(1, 3)));
         SalesOrder retried = orderService.place("ORD-1", List.of(new OrderLine(2, 5)));
 
         assertThat(retried.getId()).isEqualTo(first.getId());
         assertThat(retried.getLines()).containsExactly(new OrderLine(1, 3));
+        assertThat(retried.getStatus()).isEqualTo(OrderStatus.RESERVED);
         assertThat(orderCount()).isEqualTo(1);
+        inventoryStub.verify(1,postRequestedFor(urlEqualTo("/reservations")));
     }
 
     @Test
-    @DisplayName("같은 주문번호가 동시에 여러 번 와도 주문은 하나만 생긴다")
+    @DisplayName("같은 주문번호가 동시에 여러 번 와도 주문은 하나, 예약 요청도 한 번이다")
     void placesOnceUnderConcurrentRetries() throws Exception{
         CountDownLatch start = new CountDownLatch(1);
         List<Future<SalesOrder>> results = new ArrayList<>();
@@ -70,6 +83,7 @@ class OrderIdempotencyTest {
         }
         assertThat(orderIds).hasSize(RETRIES).containsOnly(orderIds.getFirst());
         assertThat(orderCount()).isEqualTo(1);
+        inventoryStub.verify(1, postRequestedFor(urlEqualTo("/reservations")));
     }
 
     private int orderCount() {
