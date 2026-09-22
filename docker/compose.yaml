@@ -5,17 +5,17 @@ services:
     image: mysql:8.4
     environment:
       MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: inventory
-      MYSQL_USER: inventory
-      MYSQL_PASSWORD: inventory
     ports:
       - "3306:3306"
     volumes:
       - mysql-data:/var/lib/mysql
+      # 서비스마다 DB와 계정을 만드는 스크립트. 서비스를 추가하면 이 폴더에 파일을 하나 추가한다.
+      # 데이터 볼륨이 비어 있을 때(처음 뜰 때)만, 파일 이름 순서대로 실행된다
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       # localhost는 소켓으로 붙어서, 처음 초기화할 때 잠깐 뜨는 임시 서버에도 성공한다.
       # 127.0.0.1(TCP)로 확인해야 앱이 실제로 붙을 수 있을 때 healthy가 된다.
-      test: ["CMD","mysqladmin","ping","-h","127.0.0.1","-uroot","-proot"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot"]
       interval: 5s
       timeout: 3s
       retries: 20
