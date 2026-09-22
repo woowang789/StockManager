@@ -10,4 +10,11 @@ public record StockMovementCommand(
     String actor,
     List<StockChange> changes
 ) {
+
+    public String idempotencyKey() {
+        if (refType == null) {
+            return null;
+        }
+        return refType + ":" + refId + ":" + type.name();
+    }
 }

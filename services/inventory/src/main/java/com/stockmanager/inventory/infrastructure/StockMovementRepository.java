@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.Optional;
 
 @Repository
 public class StockMovementRepository {
@@ -22,12 +23,13 @@ public class StockMovementRepository {
     public long insertMovement(StockMovementCommand command, Instant occurredAt, Instant recordedAt) {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcClient.sql("""
-                 INSERT INTO stock_movement(type, ref_type, ref_id, reason, actor, occurred_at, recorded_at)
-                 VALUES (:type, :refType, :refId, :reason, :actor, :occurredAt, :recordedAt)
+                 INSERT INTO stock_movement(type, ref_type, ref_id, idempotency_key , reason, actor, occurred_at, recorded_at)
+                 VALUES (:type, :refType, :refId,:idempotencyKey, :reason, :actor, :occurredAt, :recordedAt)
                 """)
             .param("type", command.type().name())
             .param("refType", command.refType())
             .param("refId", command.refId())
+            .param("idempotencyKey", command.idempotencyKey())
             .param("reason", command.reason())
             .param("actor", command.actor())
             .param("occurredAt", utc(occurredAt))
@@ -35,6 +37,13 @@ public class StockMovementRepository {
             .update(keyHolder);
 
         return keyHolder.getKey().longValue();
+    }
+
+    public Optional<Long> findIdByIdempotencyKey(String idempotencyKey) {
+        return jdbcClient.sql("SELECT id FROM stock_movement WHERE idempotency_key = :idempotencyKey")
+            .param("idempotencyKey", idempotencyKey)
+            .query(Long.class)
+            .optional();
     }
 
     public void insertEntry(long movementId, StockChange change, int balanceAfter) {
