@@ -6,6 +6,8 @@ import com.stockmanager.sales.domain.SalesOrder;
 import com.stockmanager.sales.infrastructure.InventoryClient;
 import com.stockmanager.sales.infrastructure.InventoryClient.ReservationRequest;
 import com.stockmanager.sales.infrastructure.SalesOrderRepository;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -25,10 +27,13 @@ public class OrderService {
 
     private final SalesOrderRepository salesOrderRepository;
     private final InventoryClient inventoryClient;
+    private final CircuitBreaker inventoryCircuitBreaker;
 
-    OrderService(SalesOrderRepository salesOrderRepository,InventoryClient inventoryClient) {
+    OrderService(SalesOrderRepository salesOrderRepository,InventoryClient inventoryClient,
+                 CircuitBreaker inventoryCircuitBreaker) {
         this.salesOrderRepository = salesOrderRepository;
         this.inventoryClient = inventoryClient;
+        this.inventoryCircuitBreaker = inventoryCircuitBreaker;
     }
 
     public SalesOrder place(String orderNo, List<OrderLine> lines) {
@@ -58,10 +63,13 @@ public class OrderService {
     private SalesOrder reserve(SalesOrder order) {
         OrderStatus result;
         try {
-            inventoryClient.reserve(toReservationRequest(order));
+            inventoryCircuitBreaker.executeRunnable(() -> inventoryClient.reserve(toReservationRequest(order)));
             result = OrderStatus.RESERVED;
         } catch (HttpClientErrorException.Conflict exception) {
             result = OrderStatus.REJECTED;
+        } catch (CallNotPermittedException exception) {
+            log.warn("주문 {}: inventory 서킷이 열려 있어 예약을 요청하지 않습니다", order.getOrderNo());
+            return order;
         } catch (RestClientException exception) {
             log.warn("주문 {}의 예약 결과를 모릅니다. PENDING으로 두고 다시 시도합니다: {}", order.getOrderNo(), exception.toString());
             return order;

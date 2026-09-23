@@ -11,6 +11,7 @@ import com.stockmanager.sales.application.OrderService;
 import com.stockmanager.sales.domain.OrderLine;
 import com.stockmanager.sales.domain.OrderStatus;
 import com.stockmanager.sales.domain.SalesOrder;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -40,11 +41,15 @@ class OrderIdempotencyTest {
     @Autowired
     WireMockServer inventoryStub;
 
+    @Autowired
+    CircuitBreaker inventoryCircuitBreaker;
+
     @BeforeEach
     void clearOrders() {
         jdbcClient.sql("DELETE FROM sales_order_item").update();
         jdbcClient.sql("DELETE FROM sales_order").update();
         inventoryStub.resetAll();
+        inventoryCircuitBreaker.reset();
         inventoryStub.stubFor(post("/reservations").willReturn(okJson("{\"movementId\":1}")));
     }
 

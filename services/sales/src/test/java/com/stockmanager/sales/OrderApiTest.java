@@ -2,6 +2,7 @@ package com.stockmanager.sales;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.client.WireMock;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -40,11 +41,15 @@ class OrderApiTest {
     @Autowired
     WireMockServer inventoryStub;
 
+    @Autowired
+    CircuitBreaker inventoryCircuitBreaker;
+
     @BeforeEach
     void clearOrders() {
         jdbcClient.sql("DELETE FROM sales_order_item").update();
         jdbcClient.sql("DELETE FROM sales_order").update();
         inventoryStub.resetAll();
+        inventoryCircuitBreaker.reset();
         inventoryStub.stubFor(WireMock.post("/reservations").willReturn(okJson("{\"movementId\":1}")));
     }
 

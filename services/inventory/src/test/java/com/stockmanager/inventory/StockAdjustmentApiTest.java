@@ -87,9 +87,10 @@ class StockAdjustmentApiTest {
     @DisplayName("사유가 없으면 조정할 수 없다")
     void rejectsAdjustmentWithoutReason() throws Exception {
         adjust("""
-                {"locationCode":"DC","productId":1,"state":"AVAILABLE","delta":10}
-                """)
-            .andExpect(status().isBadRequest());
+            {"locationCode":"DC","productId":1,"state":"AVAILABLE","delta":10}
+            """)
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.errors.reason").exists());
 
         assertThat(entries("DC", 1)).isEmpty();
     }

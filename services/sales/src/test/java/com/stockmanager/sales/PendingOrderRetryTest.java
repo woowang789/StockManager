@@ -12,6 +12,7 @@ import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.stubbing.Scenario;
 import com.stockmanager.sales.application.OrderService;
 import com.stockmanager.sales.domain.OrderLine;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -35,11 +36,15 @@ public class PendingOrderRetryTest {
     @Autowired
     WireMockServer inventoryStub;
 
+    @Autowired
+    CircuitBreaker inventoryCircuitBreaker;
+
     @BeforeEach
     void clearOrdersAndStub() {
         jdbcClient.sql("DELETE FROM sales_order_item").update();
         jdbcClient.sql("DELETE FROM sales_order").update();
         inventoryStub.resetAll();
+        inventoryCircuitBreaker.reset();
     }
 
     @Test

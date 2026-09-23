@@ -3,6 +3,8 @@ spring-boot = "4.1.1"
 spring-dependency-management = "1.1.7"
 # Boot BOM이 관리하지 않아 버전을 직접 적는다. 4.x는 아직 베타라 3.x 안정판을 쓴다
 wiremock = "3.13.2"
+# 스프링 부트 4용 스타터가 아직 없어서 서킷브레이커 모듈만 직접 가져온다
+resilience4j = "2.3.0"
 
 [libraries]
 # build-logic에서 쓰는 Gradle 플러그인
@@ -29,5 +31,6 @@ spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-star
 spring-boot-starter-webmvc-test = { module = "org.springframework.boot:spring-boot-starter-webmvc-test" }
 spring-boot-testcontainers = { module = "org.springframework.boot:spring-boot-testcontainers" }
 testcontainers-mysql = { module = "org.testcontainers:testcontainers-mysql" }
+resilience4j-circuitbreaker = { module = "io.github.resilience4j:resilience4j-circuitbreaker", version.ref = "resilience4j" }
 wiremock-standalone = { module = "org.wiremock:wiremock-standalone", version.ref = "wiremock" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
