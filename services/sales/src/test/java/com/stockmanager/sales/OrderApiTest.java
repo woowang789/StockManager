@@ -22,6 +22,7 @@ import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -77,9 +78,11 @@ class OrderApiTest {
     @DisplayName("같은 상품이 두 줄이면 접수하지 않고 inventory도 부르지 않는다")
     void rejectsDuplicateProductLines() throws Exception {
         place("""
-                {"orderNo":"ORD-2","items":[{"productId":1,"quantity":3},{"productId":1,"quantity":2}]}
-                """)
-            .andExpect(status().isBadRequest());
+            {"orderNo":"ORD-2","items":[{"productId":1,"quantity":3},{"productId":1,"quantity":2}]}
+            """)
+            .andExpect(status().isBadRequest())
+            .andExpect(content().contentTypeCompatibleWith("application/problem+json"))
+            .andExpect(jsonPath("$.detail").value("같은 상품이 두 줄에 있습니다: 상품 1"));
 
         assertThat(orderCount()).isZero();
         inventoryStub.verify(0,postRequestedFor(urlEqualTo("/reservations")));

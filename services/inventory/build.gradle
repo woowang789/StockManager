@@ -3,6 +3,7 @@ plugins {
 }
 
 dependencies {
+    implementation project(':common:web')
     implementation libs.spring.boot.starter.webmvc
     implementation libs.spring.boot.starter.jdbc
     implementation libs.spring.boot.starter.validation

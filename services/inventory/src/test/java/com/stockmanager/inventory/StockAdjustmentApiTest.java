@@ -3,6 +3,8 @@ package com.stockmanager.inventory;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -70,9 +72,12 @@ class StockAdjustmentApiTest {
                 """);
 
         adjust("""
-                {"locationCode":"DC","productId":1,"state":"AVAILABLE","delta":-5,"reason":"LOST"}
-                """)
-            .andExpect(status().isConflict());
+            {"locationCode":"DC","productId":1,"state":"AVAILABLE","delta":-5,"reason":"LOST"}
+            """)
+            .andExpect(status().isConflict())
+            .andExpect(content().contentType("application/problem+json"))
+            .andExpect(jsonPath("$.status").value(409))
+            .andExpect(jsonPath("$.detail").value("재고가 부족합니다: DC 상품 1의 AVAILABLE 5개"));
 
         assertThat(availableOf("DC", 1)).isEqualTo(3);
         assertThat(entries("DC", 1)).containsExactly("3:3");

@@ -1,0 +1,12 @@
+// 다른 모듈이 가져다 쓰는 공통 라이브러리 모듈에 적용하는 설정. 실행 jar는 만들지 않는다
+plugins {
+    id 'stock.java'
+    id 'java-library'
+}
+
+def libs = extensions.getByType(VersionCatalogsExtension).named('libs')
+
+dependencies {
+    // 스프링 부트 BOM을 쓰는 쪽까지 물려줘서, 라이브러리와 서비스가 같은 버전을 쓴다
+    api platform(libs.findLibrary('spring-boot-bom').get())
+}

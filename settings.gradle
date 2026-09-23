@@ -13,5 +13,6 @@ dependencyResolutionManagement {
 
 rootProject.name = 'stock-manager'
 
+include 'common:web'
 include 'services:inventory'
 include 'services:sales'
