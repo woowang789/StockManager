@@ -1,10 +1,12 @@
 package com.stockmanager.inventory;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.stockmanager.inventory.application.ReservationService;
 import com.stockmanager.inventory.application.StockAdjustmentService;
 import com.stockmanager.inventory.domain.AdjustmentReason;
+import com.stockmanager.inventory.domain.InsufficientStockException;
 import com.stockmanager.inventory.domain.ReserveCommand;
 import com.stockmanager.inventory.domain.StockChange;
 import com.stockmanager.inventory.domain.StockState;
@@ -27,6 +29,7 @@ import java.util.concurrent.Future;
 class ReservationIdempotencyTest {
 
     private static final int RETRIES = 10;
+    private static final int ROUNDS = 10;
 
     @Autowired
     ReservationService reservationService;
@@ -64,8 +67,10 @@ class ReservationIdempotencyTest {
     @DisplayName("같은 예약이 동시에 여러 번 들어와도 한 번만 반영된다")
     void reservesOnceUnderConcurrentRetries() throws Exception{
         given(10);
-
-        List<Long> movementIds = reserveConcurrently(orderOf("ORD-1", 3));
+        List<Long> movementIds = new ArrayList<>();
+        for(Future<Long> result : reserveConcurrently(orderOf("ORD-1", 3))){
+            movementIds.add(result.get());
+        }
 
         assertThat(movementIds).hasSize(RETRIES).containsOnly(movementIds.getFirst());
         assertThat(quantityOf("available")).isEqualTo(7);
@@ -74,8 +79,23 @@ class ReservationIdempotencyTest {
         assertThat(reserveMovementCount()).isEqualTo(1);
     }
 
+    @Test
+    @DisplayName("재고가 모자란 같은 예약이 동시에 여러 번 와도 모두 재고 부족으로 끝난다")
+    void rejectsAllConcurrentRetriesWhenStockIsShort() throws Exception {
+        given(1);
 
-    private List<Long> reserveConcurrently(ReserveCommand command) throws Exception {
+        for (int round = 1; round <= ROUNDS; round++) {
+            for (Future<Long> result : reserveConcurrently(orderOf("ORD-" + round, 3))) {
+                assertThatThrownBy(result::get).hasCauseInstanceOf(InsufficientStockException.class);
+            }
+        }
+        assertThat(quantityOf("available")).isEqualTo(1);
+        assertThat(reservationRowCount()).isZero();
+        assertThat(reserveMovementCount()).isZero();
+    }
+
+
+    private List<Future<Long>> reserveConcurrently(ReserveCommand command) throws Exception {
         CountDownLatch start = new CountDownLatch(1);
         List<Future<Long>> results = new ArrayList<>();
 
@@ -89,11 +109,7 @@ class ReservationIdempotencyTest {
             start.countDown();
         }
 
-        List<Long> movementIds = new ArrayList<>();
-        for (Future<Long> result : results) {
-            movementIds.add(result.get());
-        }
-        return movementIds;
+        return results;
     }
 
     private void given(int quantity) {

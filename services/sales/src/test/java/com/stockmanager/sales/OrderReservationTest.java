@@ -1,9 +1,9 @@
 package com.stockmanager.sales;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
 import static com.github.tomakehurst.wiremock.client.WireMock.post;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.stockmanager.sales.application.OrderService;
@@ -17,7 +17,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import org.springframework.web.client.HttpServerErrorException;
+import java.time.Duration;
 import java.util.List;
 
 @Import({TestcontainersConfiguration.class, InventoryStubConfiguration.class})
@@ -55,14 +55,28 @@ class OrderReservationTest {
     }
 
     @Test
-    @DisplayName("inventory가 실패해도 먼저 커밋한 주문은 PENDING으로 남는다")
+    @DisplayName("inventory가 500을 주면 결과를 모르는 것이라 주문을 PENDING으로 둔다")
     void keepsPendingOrderWhenInventoryFails() {
         inventoryStub.stubFor(post("/reservations").willReturn(aResponse().withStatus(500)));
 
-        assertThatThrownBy(() -> orderService.place("ORD-1", List.of(new OrderLine(1, 3))))
-            .isInstanceOf(HttpServerErrorException.class);
+        SalesOrder order = orderService.place("ORD-1", List.of(new OrderLine(1, 3)));
 
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PENDING);
         assertThat(statusOf("ORD-1")).isEqualTo("PENDING");
+    }
+
+    @Test
+    @DisplayName("inventory가 늦으면 끝까지 기다리지 않고 주문을 PENDING으로 둔다")
+    void givesUpOnSlowInventory() {
+        inventoryStub.stubFor(post("/reservations").willReturn(okJson("{\"movementId\":1}").withFixedDelay(5000)));
+
+        long start = System.nanoTime();
+        SalesOrder order = orderService.place("ORD-1", List.of(new OrderLine(1, 3)));
+        Duration elapsed = Duration.ofNanos(System.nanoTime() - start);
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PENDING);
+        assertThat(elapsed).isLessThan(Duration.ofSeconds(4));
+
     }
 
     private String statusOf(String orderNo) {

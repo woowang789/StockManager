@@ -22,6 +22,8 @@ spring:
       # InventoryClientConfig의 group 이름과 같아야 한다
       inventory:
         base-url: http://localhost:8081
+        connect-timeout: 1s
+        read-timeout: 2s
         default-header:
           # inventory 원장에 처리자로 남는다
           X-User-Id: sales

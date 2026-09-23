@@ -7,6 +7,7 @@ import com.stockmanager.inventory.domain.StockMovementCommand;
 import com.stockmanager.inventory.domain.StockState;
 import com.stockmanager.inventory.infrastructure.ReservationRepository;
 import com.stockmanager.inventory.infrastructure.StockMovementRepository;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -17,6 +18,8 @@ import java.util.Optional;
 
 @Service
 public class ReservationService {
+
+    private static final int MAX_ATTEMPTS = 5;
 
     private final ReservationRepository reservationRepository;
     private final StockMovementRepository stockMovementRepository;
@@ -32,7 +35,18 @@ public class ReservationService {
 
     public long reserve(ReserveCommand command, String actor) {
         StockMovementCommand movement = toMovement(command, actor);
+        for(int attempt = 1; ; attempt ++){
+            try {
+                return reserveOnce(command, movement);
+            } catch (CannotAcquireLockException exception) {
+                if (attempt == MAX_ATTEMPTS){
+                    throw exception;
+                }
+            }
+        }
+    }
 
+    private long reserveOnce(ReserveCommand command, StockMovementCommand movement) {
         Optional<Long> processed = stockMovementRepository.findIdByIdempotencyKey(movement.idempotencyKey());
         if (processed.isPresent()) {
             return processed.get();

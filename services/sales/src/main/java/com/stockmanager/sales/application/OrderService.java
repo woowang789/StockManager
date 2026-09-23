@@ -6,14 +6,20 @@ import com.stockmanager.sales.domain.SalesOrder;
 import com.stockmanager.sales.infrastructure.InventoryClient;
 import com.stockmanager.sales.infrastructure.InventoryClient.ReservationRequest;
 import com.stockmanager.sales.infrastructure.SalesOrderRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.RestClientException;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
 @Service
 public class OrderService {
+
+    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
 
     private static final String REF_TYPE = "ORDER";
 
@@ -39,6 +45,12 @@ public class OrderService {
         return reserve(order);
     }
 
+    public void confirmPending(Instant createdBefore) {
+        for (SalesOrder order : salesOrderRepository.findByStatusAndCreatedAtBefore(OrderStatus.PENDING, createdBefore)) {
+            reserve(order);
+        }
+    }
+
     public Optional<SalesOrder> find(String orderNo) {
         return salesOrderRepository.findByOrderNo(orderNo);
     }
@@ -50,6 +62,9 @@ public class OrderService {
             result = OrderStatus.RESERVED;
         } catch (HttpClientErrorException.Conflict exception) {
             result = OrderStatus.REJECTED;
+        } catch (RestClientException exception) {
+            log.warn("주문 {}의 예약 결과를 모릅니다. PENDING으로 두고 다시 시도합니다: {}", order.getOrderNo(), exception.toString());
+            return order;
         }
         salesOrderRepository.changeStatus(order.getId(), OrderStatus.PENDING, result);
         return salesOrderRepository.findByOrderNo(order.getOrderNo()).orElseThrow();
