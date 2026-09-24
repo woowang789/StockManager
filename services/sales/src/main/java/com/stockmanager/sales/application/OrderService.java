@@ -5,6 +5,7 @@ import com.stockmanager.sales.domain.OrderStatus;
 import com.stockmanager.sales.domain.SalesOrder;
 import com.stockmanager.sales.infrastructure.InventoryClient;
 import com.stockmanager.sales.infrastructure.InventoryClient.ReservationRequest;
+import com.stockmanager.sales.infrastructure.OrderEventPublisher;
 import com.stockmanager.sales.infrastructure.SalesOrderRepository;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
@@ -28,12 +29,14 @@ public class OrderService {
     private final SalesOrderRepository salesOrderRepository;
     private final InventoryClient inventoryClient;
     private final CircuitBreaker inventoryCircuitBreaker;
+    private final OrderEventPublisher orderEventPublisher;
 
     OrderService(SalesOrderRepository salesOrderRepository,InventoryClient inventoryClient,
-                 CircuitBreaker inventoryCircuitBreaker) {
+                 CircuitBreaker inventoryCircuitBreaker,OrderEventPublisher orderEventPublisher) {
         this.salesOrderRepository = salesOrderRepository;
         this.inventoryClient = inventoryClient;
         this.inventoryCircuitBreaker = inventoryCircuitBreaker;
+        this.orderEventPublisher = orderEventPublisher;
     }
 
     public SalesOrder place(String orderNo, List<OrderLine> lines) {
@@ -74,8 +77,13 @@ public class OrderService {
             log.warn("주문 {}의 예약 결과를 모릅니다. PENDING으로 두고 다시 시도합니다: {}", order.getOrderNo(), exception.toString());
             return order;
         }
-        salesOrderRepository.changeStatus(order.getId(), OrderStatus.PENDING, result);
-        return salesOrderRepository.findByOrderNo(order.getOrderNo()).orElseThrow();
+        int changed = salesOrderRepository.changeStatus(order.getId(), OrderStatus.PENDING, result);
+        SalesOrder confirmed = salesOrderRepository.findByOrderNo(order.getOrderNo()).orElseThrow();
+
+        if (changed == 1 && result == OrderStatus.RESERVED) {
+            orderEventPublisher.orderReserved(confirmed);
+        }
+        return confirmed;
     }
 
 

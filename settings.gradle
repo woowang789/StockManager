@@ -14,5 +14,6 @@ dependencyResolutionManagement {
 rootProject.name = 'stock-manager'
 
 include 'common:web'
+include 'common:event-contract'
 include 'services:inventory'
 include 'services:sales'
