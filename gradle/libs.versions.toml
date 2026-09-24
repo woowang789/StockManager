@@ -23,6 +23,10 @@ spring-boot-starter-validation = { module = "org.springframework.boot:spring-boo
 spring-boot-starter-restclient = { module = "org.springframework.boot:spring-boot-starter-restclient" }
 spring-boot-starter-kafka = { module = "org.springframework.boot:spring-boot-starter-kafka" }
 spring-webmvc = { module = "org.springframework:spring-webmvc" }
+spring-jdbc = { module = "org.springframework:spring-jdbc" }
+spring-kafka = { module = "org.springframework.kafka:spring-kafka" }
+jackson-databind = { module = "tools.jackson.core:jackson-databind" }
+slf4j-api = { module = "org.slf4j:slf4j-api" }
 spring-boot-autoconfigure = { module = "org.springframework.boot:spring-boot-autoconfigure" }
 spring-boot-starter-flyway = { module = "org.springframework.boot:spring-boot-starter-flyway" }
 flyway-mysql = { module = "org.flywaydb:flyway-mysql" }

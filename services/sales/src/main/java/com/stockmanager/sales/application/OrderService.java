@@ -5,7 +5,7 @@ import com.stockmanager.sales.domain.OrderStatus;
 import com.stockmanager.sales.domain.SalesOrder;
 import com.stockmanager.sales.infrastructure.InventoryClient;
 import com.stockmanager.sales.infrastructure.InventoryClient.ReservationRequest;
-import com.stockmanager.sales.infrastructure.OrderEventPublisher;
+import com.stockmanager.sales.infrastructure.OrderEventRecorder;
 import com.stockmanager.sales.infrastructure.SalesOrderRepository;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 import java.time.Instant;
@@ -29,14 +30,17 @@ public class OrderService {
     private final SalesOrderRepository salesOrderRepository;
     private final InventoryClient inventoryClient;
     private final CircuitBreaker inventoryCircuitBreaker;
-    private final OrderEventPublisher orderEventPublisher;
+    private final OrderEventRecorder orderEventRecorder;
+    private final TransactionTemplate transactionTemplate;
 
     OrderService(SalesOrderRepository salesOrderRepository,InventoryClient inventoryClient,
-                 CircuitBreaker inventoryCircuitBreaker,OrderEventPublisher orderEventPublisher) {
+                 CircuitBreaker inventoryCircuitBreaker,OrderEventRecorder orderEventRecorder,
+                 TransactionTemplate transactionTemplate) {
         this.salesOrderRepository = salesOrderRepository;
         this.inventoryClient = inventoryClient;
         this.inventoryCircuitBreaker = inventoryCircuitBreaker;
-        this.orderEventPublisher = orderEventPublisher;
+        this.orderEventRecorder = orderEventRecorder;
+        this.transactionTemplate = transactionTemplate;
     }
 
     public SalesOrder place(String orderNo, List<OrderLine> lines) {
@@ -64,26 +68,38 @@ public class OrderService {
     }
 
     private SalesOrder reserve(SalesOrder order) {
-        OrderStatus result;
+        Optional<OrderStatus> result = requestReservation(order);
+        if (result.isEmpty()) {
+            return order;
+        }
+        return confirm(order, result.get());
+    }
+
+    private Optional<OrderStatus> requestReservation(SalesOrder order) {
         try {
             inventoryCircuitBreaker.executeRunnable(() -> inventoryClient.reserve(toReservationRequest(order)));
-            result = OrderStatus.RESERVED;
+            return Optional.of(OrderStatus.RESERVED);
         } catch (HttpClientErrorException.Conflict exception) {
-            result = OrderStatus.REJECTED;
+            return Optional.of(OrderStatus.REJECTED);
         } catch (CallNotPermittedException exception) {
             log.warn("주문 {}: inventory 서킷이 열려 있어 예약을 요청하지 않습니다", order.getOrderNo());
-            return order;
+            return Optional.empty();
         } catch (RestClientException exception) {
             log.warn("주문 {}의 예약 결과를 모릅니다. PENDING으로 두고 다시 시도합니다: {}", order.getOrderNo(), exception.toString());
-            return order;
+            return Optional.empty();
         }
-        int changed = salesOrderRepository.changeStatus(order.getId(), OrderStatus.PENDING, result);
-        SalesOrder confirmed = salesOrderRepository.findByOrderNo(order.getOrderNo()).orElseThrow();
+    }
 
-        if (changed == 1 && result == OrderStatus.RESERVED) {
-            orderEventPublisher.orderReserved(confirmed);
-        }
-        return confirmed;
+    private SalesOrder confirm(SalesOrder order, OrderStatus result) {
+        return transactionTemplate.execute(status -> {
+            int changed = salesOrderRepository.changeStatus(order.getId(), OrderStatus.PENDING, result);
+            SalesOrder confirmed = salesOrderRepository.findByOrderNo(order.getOrderNo()).orElseThrow();
+
+            if (changed == 1 && result == OrderStatus.RESERVED) {
+                orderEventRecorder.orderReserved(confirmed);
+            }
+            return confirmed;
+        });
     }
 
 

@@ -1,0 +1,12 @@
+plugins {
+    id 'stock.library'
+}
+
+dependencies {
+    // 서비스가 이미 가지고 있는 것들이다. 버전은 BOM이 정한다
+    api libs.spring.jdbc
+    api libs.spring.kafka
+    api libs.spring.boot.autoconfigure
+    api libs.jackson.databind
+    implementation libs.slf4j.api
+}

@@ -15,5 +15,6 @@ rootProject.name = 'stock-manager'
 
 include 'common:web'
 include 'common:event-contract'
+include 'common:messaging'
 include 'services:inventory'
 include 'services:sales'
