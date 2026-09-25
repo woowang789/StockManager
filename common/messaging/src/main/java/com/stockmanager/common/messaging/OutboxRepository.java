@@ -32,7 +32,7 @@ public class OutboxRepository {
 
     public List<OutboxMessage> findUnpublished(int limit) {
         return jdbcClient.sql("""
-                                SELECT id, topic, message_key, payload
+                                SELECT id, topic, message_key,event_type, payload
                                   FROM outbox
                                 WHERE published_at IS NULL
                                 ORDER BY id
@@ -40,7 +40,8 @@ public class OutboxRepository {
                 """)
             .param("limit", limit)
             .query((rs, rowNum) -> new OutboxMessage(
-                rs.getLong("id"), rs.getString("topic"), rs.getString("message_key"), rs.getString("payload")))
+                rs.getLong("id"), rs.getString("topic"), rs.getString("message_key"),
+                rs.getString("event_type"),rs.getString("payload")))
             .list();
     }
 

@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: wms
+  datasource:
+    url: jdbc:mysql://localhost:3306/wms
+    username: wms
+    password: wms
+  flyway:
+    fail-on-missing-locations: true
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      # 이 그룹이 어디까지 읽었는지를 카프카가 기억한다. 서비스를 재배포해도 이어서 읽는다
+      group-id: wms
+      # 진도 기록이 없을 때(처음 뜰 때) 토픽 맨 앞부터 읽는다. 켜지기 전에 쌓인 주문을 놓치지 않는다
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+server:
+  port: 8083

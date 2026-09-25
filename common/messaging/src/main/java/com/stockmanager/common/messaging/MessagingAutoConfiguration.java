@@ -15,6 +15,11 @@ public class MessagingAutoConfiguration {
     }
 
     @Bean
+    ProcessedEventRepository processedEventRepository(JdbcClient jdbcClient) {
+        return new ProcessedEventRepository(jdbcClient);
+    }
+
+    @Bean
     OutboxPublisher outboxPublisher(OutboxRepository outboxRepository, KafkaTemplate<String, String> kafkaTemplate) {
         return new OutboxPublisher(outboxRepository, kafkaTemplate);
     }
