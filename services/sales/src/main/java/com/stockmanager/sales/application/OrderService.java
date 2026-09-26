@@ -63,6 +63,15 @@ public class OrderService {
         }
     }
 
+    public void markShipped(String orderNo) {
+        SalesOrder order = salesOrderRepository.findByOrderNo(orderNo)
+            .orElseThrow(() -> new IllegalArgumentException("주문이 없습니다: " + orderNo));
+        int changed = salesOrderRepository.changeStatus(order.getId(), OrderStatus.RESERVED, OrderStatus.SHIPPED);
+        if (changed == 0) {
+            log.info("이미 끝난 주문입니다: {} ({})", orderNo, order.getStatus());
+        }
+    }
+
     public Optional<SalesOrder> find(String orderNo) {
         return salesOrderRepository.findByOrderNo(orderNo);
     }

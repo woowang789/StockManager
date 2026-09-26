@@ -11,10 +11,12 @@ import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 public class ReservationService {
@@ -26,7 +28,7 @@ public class ReservationService {
     private final StockMover stockMover;
     private final TransactionTemplate transactionTemplate;
 
-    public ReservationService(ReservationRepository reservationRepository, StockMovementRepository stockMovementRepository, StockMover stockMover, TransactionTemplate transactionTemplate) {
+    ReservationService(ReservationRepository reservationRepository, StockMovementRepository stockMovementRepository, StockMover stockMover, TransactionTemplate transactionTemplate) {
         this.reservationRepository = reservationRepository;
         this.stockMovementRepository = stockMovementRepository;
         this.stockMover = stockMover;
@@ -42,7 +44,17 @@ public class ReservationService {
                 if (attempt == MAX_ATTEMPTS){
                     throw exception;
                 }
+                backOff(attempt);
             }
+        }
+    }
+
+    private void backOff(int attempt) {
+        try {
+            Thread.sleep(Duration.ofMillis(ThreadLocalRandom.current().nextLong(5L * attempt, 15L * attempt)));
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(exception);
         }
     }
 

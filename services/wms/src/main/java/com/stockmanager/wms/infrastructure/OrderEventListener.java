@@ -1,5 +1,6 @@
 package com.stockmanager.wms.infrastructure;
 
+import com.stockmanager.common.event.EventHeaders;
 import com.stockmanager.common.event.OrderReserved;
 import com.stockmanager.common.messaging.OutboxPublisher;
 import com.stockmanager.wms.application.ShipmentService;
@@ -27,7 +28,7 @@ class OrderEventListener {
     }
 
     @KafkaListener(topics = "sales.order")
-    void onOrderEvent(@Header(OutboxPublisher.EVENT_TYPE_HEADER) String eventType, @Payload String payload) {
+    void onOrderEvent(@Header(EventHeaders.EVENT_TYPE) String eventType, @Payload String payload) {
         if (!ORDER_RESERVED.equals(eventType)) {
             log.debug("아직 처리하지 않는 이벤트입니다: {}",eventType);
             return;

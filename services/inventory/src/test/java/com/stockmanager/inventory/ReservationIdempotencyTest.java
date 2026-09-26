@@ -28,7 +28,7 @@ import java.util.concurrent.Future;
 @SpringBootTest
 class ReservationIdempotencyTest {
 
-    private static final int RETRIES = 10;
+    private static final int RETRIES = 20;
     private static final int ROUNDS = 10;
 
     @Autowired
@@ -81,7 +81,7 @@ class ReservationIdempotencyTest {
 
     @Test
     @DisplayName("재고가 모자란 같은 예약이 동시에 여러 번 와도 모두 재고 부족으로 끝난다")
-    void rejectsAllConcurrentRetriesWhenStockIsShort() throws Exception {
+    void rejectsAllConcurrentRetriesWhenStockIsShort() {
         given(1);
 
         for (int round = 1; round <= ROUNDS; round++) {
@@ -95,7 +95,7 @@ class ReservationIdempotencyTest {
     }
 
 
-    private List<Future<Long>> reserveConcurrently(ReserveCommand command) throws Exception {
+    private List<Future<Long>> reserveConcurrently(ReserveCommand command)  {
         CountDownLatch start = new CountDownLatch(1);
         List<Future<Long>> results = new ArrayList<>();
 

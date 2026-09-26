@@ -3,6 +3,7 @@ plugins {
 }
 
 dependencies {
+    api project(':common:event-contract')
     // 서비스가 이미 가지고 있는 것들이다. 버전은 BOM이 정한다
     api libs.spring.jdbc
     api libs.spring.kafka

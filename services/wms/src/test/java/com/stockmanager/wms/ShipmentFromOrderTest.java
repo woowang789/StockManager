@@ -2,7 +2,7 @@ package com.stockmanager.wms;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.stockmanager.common.messaging.OutboxPublisher;
+import com.stockmanager.common.event.EventHeaders;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
@@ -38,7 +38,7 @@ class ShipmentFromOrderTest {
 
     @Test
     @DisplayName("예약된 주문을 받으면 출하 작업이 생긴다")
-    void createShipmentFromOrderReserved() {
+    void createsShipmentFromOrderReserved() {
         publish("OrderReserved", "evt-1", "ORD-1");
 
         assertThat(waitForShipment("ORD-1")).isEqualTo("READY");
@@ -47,7 +47,7 @@ class ShipmentFromOrderTest {
 
     @Test
     @DisplayName("같은 이벤트가 두 번 와도 출하 작업은 하나다")
-    void createShipmentOnceForRepeatedEvent() {
+    void createsShipmentOnceForRepeatedEvent() {
         publish("OrderReserved", "evt-2","ORD-2");
         publish("OrderReserved", "evt-2","ORD-2");
 
@@ -73,7 +73,7 @@ class ShipmentFromOrderTest {
                  "occurredAt":"2026-09-24T00:00:00Z"}
                 """.formatted(eventId, orderNo);
         kafkaTemplate.send(new ProducerRecord<>(TOPIC, null, orderNo, payload,
-            List.of(new RecordHeader(OutboxPublisher.EVENT_TYPE_HEADER, eventType.getBytes(StandardCharsets.UTF_8)))))
+            List.of(new RecordHeader(EventHeaders.EVENT_TYPE, eventType.getBytes(StandardCharsets.UTF_8)))))
             .join();
     }
 

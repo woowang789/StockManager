@@ -3,9 +3,11 @@ plugins {
 }
 
 dependencies {
+    implementation project(':common:event-contract')
     implementation project(':common:web')
     implementation libs.spring.boot.starter.webmvc
     implementation libs.spring.boot.starter.jdbc
+    implementation libs.spring.boot.starter.kafka
     implementation libs.spring.boot.starter.validation
     implementation libs.spring.boot.starter.flyway
     implementation libs.flyway.mysql
@@ -14,4 +16,5 @@ dependencies {
     testImplementation libs.spring.boot.starter.webmvc.test
     testImplementation libs.spring.boot.testcontainers
     testImplementation libs.testcontainers.mysql
+    testImplementation libs.testcontainers.kafka
 }

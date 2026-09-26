@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import com.stockmanager.common.event.EventHeaders;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.header.internals.RecordHeader;
 import org.slf4j.Logger;
@@ -12,8 +13,6 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 
 public class OutboxPublisher {
-
-    public static final String EVENT_TYPE_HEADER = "event-type";
 
     private static final int BATCH_SIZE = 100;
 
@@ -42,6 +41,6 @@ public class OutboxPublisher {
 
     private ProducerRecord<String,String> toRecord(OutboxMessage message){
         return new ProducerRecord<>(message.topic(), null, message.messageKey(), message.payload(),
-            List.of(new RecordHeader(EVENT_TYPE_HEADER, message.eventType().getBytes(StandardCharsets.UTF_8))));
+            List.of(new RecordHeader(EventHeaders.EVENT_TYPE, message.eventType().getBytes(StandardCharsets.UTF_8))));
     }
 }

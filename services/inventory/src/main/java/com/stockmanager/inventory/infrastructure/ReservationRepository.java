@@ -27,4 +27,16 @@ public class ReservationRepository {
             .param("status", ReservationStatus.ACTIVE.name())
             .update();
     }
+
+    public int consume(String refType, String refId) {
+        return jdbcClient.sql("""
+                        UPDATE reservation SET status = :to
+                        WHERE ref_type = :refType AND ref_id = :refId AND status = :from
+                """)
+            .param("to", ReservationStatus.CONSUMED.name())
+            .param("from", ReservationStatus.ACTIVE.name())
+            .param("refType", refType)
+            .param("refId", refId)
+            .update();
+    }
 }

@@ -8,6 +8,14 @@ spring:
   flyway:
     # 마이그레이션 폴더 이름을 잘못 만들면 조용히 넘어가지 않고 바로 실패한다
     fail-on-missing-locations: true
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: inventory
+      # 진도 기록이 없을 때(처음 뜰 때)만 쓰인다. 켜지기 전에 쌓인 이벤트를 놓치지 않는다
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
 
 server:
   port: 8081
