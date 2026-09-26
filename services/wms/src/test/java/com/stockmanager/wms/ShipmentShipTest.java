@@ -44,6 +44,8 @@ class ShipmentShipTest {
     @DisplayName("운송하면 SHIPPED가 되고 ShipmentShipped가 outbox에 남아 발행된다")
     void shipsAndRecordsEvent() {
         shipmentRepository.insert("ORD-1", "DC", List.of(new ShipmentLine(1, 3)));
+        shipmentService.pick("ORD-1");
+        shipmentService.pack("ORD-1");
 
         assertThat(shipmentService.ship("ORD-1").status()).isEqualTo(ShipmentStatus.SHIPPED);
 
@@ -56,11 +58,24 @@ class ShipmentShipTest {
     @DisplayName("두 번 운송해도 이벤트는 하나다")
     void recordsEventOnce() {
         shipmentRepository.insert("ORD-2", "DC", List.of(new ShipmentLine(1, 3)));
+        shipmentService.pick("ORD-2");
+        shipmentService.pack("ORD-2");
 
         shipmentService.ship("ORD-2");
         shipmentService.ship("ORD-2");
 
         assertThat(outboxCount("ORD-2")).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("피킹 패킹을 건너뛰고 운송할 수 없다")
+    void rejectsShipBeforePacking() {
+        shipmentRepository.insert("ORD-3", "DC", List.of(new ShipmentLine(1, 3)));
+
+        assertThatThrownBy(() -> shipmentService.ship("ORD-3"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("운송할 수 없는 상태입니다");
+        assertThat(outboxCount("ORD-3")).isZero();
     }
 
     @Test

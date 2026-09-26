@@ -30,6 +30,11 @@ public class OrderController {
         return OrderResponse.from(orderService.place(request.orderNo(), lines));
     }
 
+    @PostMapping("/{orderNo}/cancel")
+    public OrderResponse cancel(@PathVariable String orderNo) {
+        return OrderResponse.from(orderService.requestCancel(orderNo));
+    }
+
     @GetMapping("/{orderNo}")
     public ResponseEntity<OrderResponse> get(@PathVariable String orderNo) {
         return orderService.find(orderNo)

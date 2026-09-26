@@ -1,5 +1,6 @@
 package com.stockmanager.sales.infrastructure;
 
+import com.stockmanager.common.event.OrderCancelRequested;
 import com.stockmanager.common.event.OrderReserved;
 import com.stockmanager.common.messaging.OutboxRepository;
 import com.stockmanager.sales.domain.SalesOrder;
@@ -26,5 +27,11 @@ public class OrderEventRecorder {
         OrderReserved event = new OrderReserved(
             UUID.randomUUID().toString(), order.getOrderNo(), order.getLocationCode(), items, Instant.now());
         outboxRepository.append(TOPIC, order.getOrderNo(), event);
+    }
+
+    public void orderCancelRequested(String orderNo) {
+        OrderCancelRequested event =
+            new OrderCancelRequested(UUID.randomUUID().toString(), orderNo, Instant.now());
+        outboxRepository.append(TOPIC, orderNo, event);
     }
 }

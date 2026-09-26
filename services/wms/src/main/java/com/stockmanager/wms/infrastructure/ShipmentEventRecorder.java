@@ -1,5 +1,6 @@
 package com.stockmanager.wms.infrastructure;
 
+import com.stockmanager.common.event.ShipmentCanceled;
 import com.stockmanager.common.event.ShipmentShipped;
 import com.stockmanager.common.messaging.OutboxRepository;
 import com.stockmanager.wms.domain.ShipmentLine;
@@ -28,5 +29,13 @@ public class ShipmentEventRecorder {
         outboxRepository.append(TOPIC, orderNo, event);
     }
 
+    public void shipmentCanceled(String orderNo, String locationCode, List<ShipmentLine> lines, boolean picked) {
+        List<ShipmentCanceled.Item> items = lines.stream()
+            .map(line -> new ShipmentCanceled.Item(line.productId(), line.quantity()))
+            .toList();
+        ShipmentCanceled event = new ShipmentCanceled(
+            UUID.randomUUID().toString(), orderNo, locationCode, items, picked, Instant.now());
+        outboxRepository.append(TOPIC, orderNo, event);
+    }
 
 }

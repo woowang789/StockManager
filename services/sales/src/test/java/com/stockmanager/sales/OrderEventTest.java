@@ -1,30 +1,15 @@
 package com.stockmanager.sales;
 
-import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
-import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
-import static com.github.tomakehurst.wiremock.client.WireMock.post;
+import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
+import com.stockmanager.common.event.EventHeaders;
 import com.stockmanager.common.event.OrderReserved;
 import com.stockmanager.sales.application.OrderService;
 import com.stockmanager.sales.domain.OrderLine;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.DisplayName;
-import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
-import org.springframework.jdbc.core.simple.JdbcClient;
-import org.testcontainers.kafka.KafkaContainer;
-import org.apache.kafka.common.serialization.StringDeserializer;
-import tools.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -35,6 +20,22 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.header.Header;
+import org.apache.kafka.common.serialization.StringDeserializer;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.testcontainers.kafka.KafkaContainer;
+import tools.jackson.databind.ObjectMapper;
 
 @Import({TestcontainersConfiguration.class, InventoryStubConfiguration.class})
 @SpringBootTest
@@ -88,13 +89,13 @@ class OrderEventTest {
     void publishesOrderReserved() throws Exception {
         inventoryStub.stubFor(post("/reservations").willReturn(okJson("{\"movementId\":1}")));
 
-        orderService.place("ORD-1", List.of(new OrderLine((1), 3)));
+        orderService.place("EVT-1", List.of(new OrderLine(1, 3)));
 
-        List<ConsumerRecord<String, String>> records = recordsOf("ORD-1", Duration.ofSeconds(10));
+        List<ConsumerRecord<String, String>> records = recordsOf("EVT-1", Duration.ofSeconds(10));
         assertThat(records).hasSize(1);
 
         OrderReserved event = objectMapper.readValue(records.getFirst().value(), OrderReserved.class);
-        assertThat(event.orderNo()).isEqualTo("ORD-1");
+        assertThat(event.orderNo()).isEqualTo("EVT-1");
         assertThat(event.locationCode()).isEqualTo("DC");
         assertThat(event.items()).containsExactly(new OrderReserved.Item(1, 3));
         assertThat(event.eventId()).isNotBlank();
@@ -106,16 +107,16 @@ class OrderEventTest {
     void publishesNothingWhenRejected() {
         inventoryStub.stubFor(post("/reservations").willReturn(aResponse().withStatus(409)));
 
-        orderService.place("ORD-2", List.of(new OrderLine(1, 3)));
+        orderService.place("EVT-2", List.of(new OrderLine(1, 3)));
 
-        assertThat(recordsOf("ORD-2", Duration.ofSeconds(3))).isEmpty();
+        assertThat(recordsOf("EVT-2", Duration.ofSeconds(3))).isEmpty();
     }
 
     @Test
     @DisplayName("두 번 확정하려 해도 이벤트는 한 번만 나간다")
     void publishesOnceWhenConfirmedTwice() throws Exception {
         inventoryStub.stubFor(post("/reservations").willReturn(aResponse().withStatus(500)));
-        orderService.place("ORD-3", List.of(new OrderLine(1, 3)));
+        orderService.place("EVT-3", List.of(new OrderLine(1, 3)));
 
         inventoryStub.resetAll();
         inventoryStub.stubFor(post("/reservations").willReturn(okJson("{\"movementId\":1}")));
@@ -123,7 +124,7 @@ class OrderEventTest {
 
         confirmPendingConcurrently();
 
-        assertThat(recordsOf("ORD-3", Duration.ofSeconds(10))).hasSize(1);
+        assertThat(recordsOf("EVT-3", Duration.ofSeconds(10))).hasSize(1);
     }
 
     private void confirmPendingConcurrently() throws Exception {
@@ -148,19 +149,25 @@ class OrderEventTest {
         List<ConsumerRecord<String, String>> found = new ArrayList<>();
         long deadline = System.nanoTime() + timeout.toNanos();
         while (System.nanoTime() < deadline && found.isEmpty()) {
-            collectInfo(found, orderNo, Duration.ofMillis(500));
+            collectInto(found, orderNo, Duration.ofMillis(500));
         }
-        collectInfo(found, orderNo, Duration.ofSeconds(1));
+        collectInto(found, orderNo, Duration.ofSeconds(1));
         return found;
     }
 
-    private void collectInfo(List<ConsumerRecord<String, String>> found, String orderNo, Duration poll) {
+    private void collectInto(List<ConsumerRecord<String, String>> found, String orderNo, Duration poll) {
         ConsumerRecords<String, String> polled = consumer.poll(poll);
         polled.records(TOPIC).forEach(record -> {
-            if (orderNo.equals(record.key())) {
+            if (orderNo.equals(record.key()) && isOrderReserved(record)) {
                 found.add(record);
             }
         });
+    }
+
+    private boolean isOrderReserved(ConsumerRecord<String, String> record) {
+        Header header = record.headers().lastHeader(EventHeaders.EVENT_TYPE);
+        return header != null
+            && OrderReserved.class.getSimpleName().equals(new String(header.value(), StandardCharsets.UTF_8));
     }
 
 

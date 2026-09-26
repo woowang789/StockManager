@@ -63,10 +63,31 @@ public class OrderService {
         }
     }
 
+    public SalesOrder requestCancel(String orderNo) {
+        SalesOrder order = salesOrderRepository.findByOrderNo(orderNo)
+            .orElseThrow(() -> new IllegalArgumentException("주문이 없습니다: " + orderNo));
+        return transactionTemplate.execute(status -> {
+            int changed = salesOrderRepository.changeStatus(
+                order.getId(), OrderStatus.RESERVED, OrderStatus.CANCEL_REQUESTED);
+            SalesOrder current = salesOrderRepository.findByOrderNo(orderNo).orElseThrow();
+            if (changed == 1) {
+                orderEventRecorder.orderCancelRequested(orderNo);
+            } else if (current.getStatus() != OrderStatus.CANCEL_REQUESTED) {
+                throw new IllegalArgumentException(
+                    "취소할 수 없는 상태입니다: " + orderNo + " (" + current.getStatus() + ")");
+            }
+            return current;
+        });
+    }
+
     public void markShipped(String orderNo) {
         SalesOrder order = salesOrderRepository.findByOrderNo(orderNo)
             .orElseThrow(() -> new IllegalArgumentException("주문이 없습니다: " + orderNo));
         int changed = salesOrderRepository.changeStatus(order.getId(), OrderStatus.RESERVED, OrderStatus.SHIPPED);
+        if (changed == 0) {
+            changed = salesOrderRepository.changeStatus(
+                order.getId(), OrderStatus.CANCEL_REQUESTED, OrderStatus.SHIPPED);
+        }
         if (changed == 0) {
             log.info("이미 끝난 주문입니다: {} ({})", orderNo, order.getStatus());
         }

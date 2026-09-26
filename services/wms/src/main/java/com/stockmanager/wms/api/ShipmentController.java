@@ -16,6 +16,16 @@ class ShipmentController {
         this.shipmentService = shipmentService;
     }
 
+    @PostMapping("/shipments/{orderNo}/pick")
+    ShipmentResponse pick(@PathVariable String orderNo) {
+        return ShipmentResponse.from(shipmentService.pick(orderNo));
+    }
+
+    @PostMapping("/shipments/{orderNo}/pack")
+    ShipmentResponse pack(@PathVariable String orderNo) {
+        return ShipmentResponse.from(shipmentService.pack(orderNo));
+    }
+
     @PostMapping("/shipments/{orderNo}/ship")
     ShipmentResponse ship(@PathVariable String orderNo) {
         return ShipmentResponse.from(shipmentService.ship(orderNo));

@@ -1,6 +1,7 @@
 package com.stockmanager.wms.infrastructure;
 
 import com.stockmanager.common.event.EventHeaders;
+import com.stockmanager.common.event.OrderCancelRequested;
 import com.stockmanager.common.event.OrderReserved;
 import com.stockmanager.common.messaging.OutboxPublisher;
 import com.stockmanager.wms.application.ShipmentService;
@@ -16,6 +17,7 @@ import tools.jackson.databind.ObjectMapper;
 class OrderEventListener {
 
     private static final String ORDER_RESERVED = OrderReserved.class.getSimpleName();
+    private static final String ORDER_CANCEL_REQUESTED = OrderCancelRequested.class.getSimpleName();
 
     private static final Logger log = LoggerFactory.getLogger(OrderEventListener.class);
 
@@ -29,10 +31,14 @@ class OrderEventListener {
 
     @KafkaListener(topics = "sales.order")
     void onOrderEvent(@Header(EventHeaders.EVENT_TYPE) String eventType, @Payload String payload) {
-        if (!ORDER_RESERVED.equals(eventType)) {
-            log.debug("아직 처리하지 않는 이벤트입니다: {}",eventType);
+        if (ORDER_RESERVED.equals(eventType)) {
+            shipmentService.createFrom(objectMapper.readValue(payload, OrderReserved.class));
             return;
         }
-        shipmentService.createFrom(objectMapper.readValue(payload, OrderReserved.class));
+        if (ORDER_CANCEL_REQUESTED.equals(eventType)) {
+            shipmentService.cancel(objectMapper.readValue(payload, OrderCancelRequested.class));
+            return;
+        }
+        log.debug("아직 처리하지 않는 이벤트입니다: {}", eventType);
     }
 }
