@@ -2,9 +2,15 @@ package com.stockmanager.wms.api;
 
 import com.stockmanager.wms.application.ShipmentService;
 import com.stockmanager.wms.domain.Shipment;
+import com.stockmanager.wms.domain.ShipmentLine;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 
@@ -14,6 +20,14 @@ class ShipmentController {
 
     ShipmentController(ShipmentService shipmentService) {
         this.shipmentService = shipmentService;
+    }
+
+    @PostMapping("/shipments/{orderNo}/shortage")
+    ShipmentResponse cancelForShortage(@PathVariable String orderNo, @Valid @RequestBody ShortageRequest request) {
+        List<ShipmentLine> shortages = request.items().stream()
+            .map(item -> new ShipmentLine(item.productId(), item.quantity()))
+            .toList();
+        return ShipmentResponse.from(shipmentService.cancelForShortage(orderNo, shortages));
     }
 
     @PostMapping("/shipments/{orderNo}/pick")
@@ -35,6 +49,13 @@ class ShipmentController {
     ShipmentResponse find(@PathVariable String orderNo) {
         return ShipmentResponse.from(shipmentService.find(orderNo));
     }
+
+    record ShortageRequest(@NotEmpty List<@Valid Item> items){
+
+        record Item(@NotNull Long productId, @NotNull @Positive Integer quantity) {
+        }
+    }
+
 
     record ShipmentResponse(String orderNo, String locationCode, String status, List<Item> items) {
 

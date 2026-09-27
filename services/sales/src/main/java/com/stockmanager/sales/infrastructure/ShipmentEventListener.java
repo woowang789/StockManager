@@ -1,6 +1,7 @@
 package com.stockmanager.sales.infrastructure;
 
 import com.stockmanager.common.event.EventHeaders;
+import com.stockmanager.common.event.ShipmentCanceled;
 import com.stockmanager.common.event.ShipmentShipped;
 import com.stockmanager.sales.application.OrderService;
 import org.slf4j.Logger;
@@ -15,6 +16,7 @@ import tools.jackson.databind.ObjectMapper;
 public class ShipmentEventListener {
 
     private static final String SHIPMENT_SHIPPED = ShipmentShipped.class.getSimpleName();
+    private static final String SHIPMENT_CANCELED = ShipmentCanceled.class.getSimpleName();
 
     private static final Logger log = LoggerFactory.getLogger(ShipmentEventListener.class);
 
@@ -28,11 +30,14 @@ public class ShipmentEventListener {
 
     @KafkaListener(topics = "wms.shipment")
     void onShipmentEvent(@Header(EventHeaders.EVENT_TYPE) String eventType, @Payload String payload) {
-        if (!SHIPMENT_SHIPPED.equals(eventType)) {
-            log.debug("아직 처리하지 않는 이벤트입니다: {}", eventType);
+        if (SHIPMENT_SHIPPED.equals(eventType)) {
+            orderService.markShipped(objectMapper.readValue(payload, ShipmentShipped.class).orderNo());
             return;
         }
-        ShipmentShipped event = objectMapper.readValue(payload, ShipmentShipped.class);
-        orderService.markShipped(event.orderNo());
+        if (SHIPMENT_CANCELED.equals(eventType)) {
+            orderService.markCanceled(objectMapper.readValue(payload, ShipmentCanceled.class).orderNo());
+            return;
+        }
+        log.debug("아직 처리하지 않는 이벤트입니다: {}", eventType);
     }
 }

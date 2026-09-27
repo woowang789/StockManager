@@ -29,13 +29,17 @@ public class ShipmentEventRecorder {
         outboxRepository.append(TOPIC, orderNo, event);
     }
 
-    public void shipmentCanceled(String orderNo, String locationCode, List<ShipmentLine> lines, boolean picked) {
-        List<ShipmentCanceled.Item> items = lines.stream()
+    public void shipmentCanceled(String orderNo, String locationCode, List<ShipmentLine> lines,
+                                 List<ShipmentLine> shortages, boolean picked) {
+        ShipmentCanceled event = new ShipmentCanceled(
+            UUID.randomUUID().toString(), orderNo, locationCode, toItems(lines), toItems(shortages), picked, Instant.now());
+        outboxRepository.append(TOPIC, orderNo, event);
+    }
+
+    private List<ShipmentCanceled.Item> toItems(List<ShipmentLine> lines) {
+        return lines.stream()
             .map(line -> new ShipmentCanceled.Item(line.productId(), line.quantity()))
             .toList();
-        ShipmentCanceled event = new ShipmentCanceled(
-            UUID.randomUUID().toString(), orderNo, locationCode, items, picked, Instant.now());
-        outboxRepository.append(TOPIC, orderNo, event);
     }
 
 }

@@ -57,11 +57,28 @@ public class ShipmentService {
                 boolean picked = shipment.status() != ShipmentStatus.READY;
                 shipmentRepository.changeStatus(event.orderNo(), shipment.status(), ShipmentStatus.CANCELED);
                 shipmentEventRecorder.shipmentCanceled(
-                    event.orderNo(), shipment.locationCode(), shipment.lines(), picked);
+                    event.orderNo(), shipment.locationCode(), shipment.lines(), List.of(), picked);
             });
         } catch (DuplicateKeyException exception) {
             log.info("이미 처리된 이벤트입니다: {} (주문 {})", event.eventId(), event.orderNo());
         }
+    }
+
+    public Shipment cancelForShortage(String orderNo, List<ShipmentLine> shortages) {
+        return transactionTemplate.execute(status -> {
+            Shipment shipment = shipmentRepository.find(orderNo)
+                .orElseThrow(() -> new IllegalArgumentException("출하 작업이 없습니다: " + orderNo));
+            if (shipment.status() == ShipmentStatus.SHIPPED || shipment.status() == ShipmentStatus.CANCELED) {
+                throw new IllegalArgumentException(
+                    "취소할 수 없는 상태입니다: " + orderNo + " (" + shipment.status() + ")");
+            }
+            boolean picked = shipment.status() != ShipmentStatus.READY;
+            shipmentRepository.changeStatus(orderNo, shipment.status(), ShipmentStatus.CANCELED);
+            shipmentEventRecorder.shipmentCanceled(
+                orderNo, shipment.locationCode(), shipment.lines(), shortages, picked);
+            return shipmentRepository.find(orderNo).orElseThrow();
+        });
+
     }
 
     public Shipment pick(String orderNo){

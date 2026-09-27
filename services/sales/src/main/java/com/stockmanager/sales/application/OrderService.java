@@ -11,14 +11,17 @@ import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 public class OrderService {
@@ -26,6 +29,8 @@ public class OrderService {
     private static final Logger log = LoggerFactory.getLogger(OrderService.class);
 
     private static final String REF_TYPE = "ORDER";
+
+    private static final int MAX_ATTEMPTS = 5;
 
     private final SalesOrderRepository salesOrderRepository;
     private final InventoryClient inventoryClient;
@@ -44,10 +49,34 @@ public class OrderService {
     }
 
     public SalesOrder place(String orderNo, List<OrderLine> lines) {
+        for (int attempt = 1;; attempt++ ) {
+            try {
+                return placeOnce(orderNo, lines);
+            } catch (CannotAcquireLockException exception) {
+                if (attempt == MAX_ATTEMPTS) {
+                    throw exception;
+                }
+                backOff(attempt);
+            }
+        }
+
+    }
+
+    private void backOff(int attempt) {
+        try {
+            Thread.sleep(Duration.ofMillis(ThreadLocalRandom.current().nextLong(5L * attempt, 15L * attempt)));
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(exception);
+        }
+    }
+
+    private SalesOrder placeOnce(String orderNo, List<OrderLine> lines) {
         Optional<SalesOrder> placed = salesOrderRepository.findByOrderNo(orderNo);
         if (placed.isPresent()) {
             return placed.get();
         }
+
         SalesOrder order;
         try {
             order = salesOrderRepository.save(SalesOrder.place(orderNo, lines));
@@ -87,6 +116,19 @@ public class OrderService {
         if (changed == 0) {
             changed = salesOrderRepository.changeStatus(
                 order.getId(), OrderStatus.CANCEL_REQUESTED, OrderStatus.SHIPPED);
+        }
+        if (changed == 0) {
+            log.info("이미 끝난 주문입니다: {} ({})", orderNo, order.getStatus());
+        }
+    }
+
+    public void markCanceled(String orderNo) {
+        SalesOrder order = salesOrderRepository.findByOrderNo(orderNo)
+            .orElseThrow(() -> new IllegalArgumentException("주문이 없습니다: " + orderNo));
+        int changed = salesOrderRepository.changeStatus(
+            order.getId(), OrderStatus.CANCEL_REQUESTED, OrderStatus.CANCELED);
+        if (changed == 0) {
+            changed = salesOrderRepository.changeStatus(order.getId(), OrderStatus.RESERVED, OrderStatus.CANCELED);
         }
         if (changed == 0) {
             log.info("이미 끝난 주문입니다: {} ({})", orderNo, order.getStatus());

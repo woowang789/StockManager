@@ -99,6 +99,39 @@ class OrderCancelTest {
         assertThat(waitForStatus("ORD-4", "SHIPPED")).isTrue();
     }
 
+    @Test
+    @DisplayName("취소된 출하를 받으면 주문이 CANCELED로 끝난다")
+    void marksOrderCanceled() {
+        orderService.place("ORD-5", List.of(new OrderLine(1, 3)));
+        orderService.requestCancel("ORD-5");
+
+        publishCanceled("evt-5", "ORD-5");
+
+        assertThat(waitForStatus("ORD-5", "CANCELED")).isTrue();
+    }
+
+    @Test
+    @DisplayName("고객이 요청하지 않았는데 창고가 취소해도 CANCELED로 끝난다")
+    void marksOrderCanceledWithoutRequest() {
+        orderService.place("ORD-6", List.of(new OrderLine(1, 3)));
+
+        publishCanceled("evt-6", "ORD-6");
+
+        assertThat(waitForStatus("ORD-6", "CANCELED")).isTrue();
+    }
+
+    private void publishCanceled(String eventId, String orderNo) {
+        String payload = """
+                {"eventId":"%s","orderNo":"%s","locationCode":"DC","items":[{"productId":1,"quantity":3}],
+                 "shortages":[],"picked":false,"occurredAt":"2026-09-26T00:00:00Z"}
+                """.formatted(eventId, orderNo);
+        kafkaTemplate.send(new ProducerRecord<>("wms.shipment", null, orderNo, payload,
+                List.of(new RecordHeader(EventHeaders.EVENT_TYPE,
+                    "ShipmentCanceled".getBytes(StandardCharsets.UTF_8)))))
+            .join();
+    }
+
+
 
     private void publishShipped(String eventId, String orderNo) {
         String payload = """

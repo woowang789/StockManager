@@ -1,10 +1,16 @@
 package com.stockmanager.wms;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.stockmanager.common.event.EventHeaders;
 import com.stockmanager.common.event.ShipmentCanceled;
 import com.stockmanager.wms.application.ShipmentService;
 import com.stockmanager.wms.domain.ShipmentLine;
 import com.stockmanager.wms.infrastructure.ShipmentRepository;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.List;
+import java.util.Optional;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.header.internals.RecordHeader;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,16 +22,10 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.kafka.core.KafkaTemplate;
 import tools.jackson.databind.ObjectMapper;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.List;
-import java.util.Optional;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
-public class ShipmentCancelTest {
+class ShipmentCancelTest {
 
     private static final String TOPIC = "sales.order";
 
@@ -90,6 +90,21 @@ public class ShipmentCancelTest {
         sleep(Duration.ofSeconds(3));
         assertThat(statusOf("ORD-3")).isEqualTo("SHIPPED");
         assertThat(canceledPayloadOf("ORD-3")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("결품으로 취소하면 찾지 못한 수량이 이벤트에 실린다")
+    void cancelsForShortage() {
+        shipmentRepository.insert("ORD-4", "DC", List.of(new ShipmentLine(1, 3)));
+        shipmentService.pick("ORD-4");
+
+        shipmentService.cancelForShortage("ORD-4", List.of(new ShipmentLine(1, 2)));
+
+        assertThat(statusOf("ORD-4")).isEqualTo("CANCELED");
+        ShipmentCanceled event = canceledEventOf("ORD-4");
+        assertThat(event.items()).containsExactly(new ShipmentCanceled.Item(1, 3));
+        assertThat(event.shortages()).containsExactly(new ShipmentCanceled.Item(1, 2));
+        assertThat(event.picked()).isTrue();
     }
 
     private void publishCancel(String eventId, String orderNo) {

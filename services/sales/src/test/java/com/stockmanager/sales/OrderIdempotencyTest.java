@@ -30,7 +30,7 @@ import java.util.concurrent.Future;
 @SpringBootTest
 class OrderIdempotencyTest {
 
-    private static final int RETRIES = 10;
+    private static final int RETRIES = 20;
 
     @Autowired
     OrderService orderService;

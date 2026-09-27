@@ -29,12 +29,20 @@ public class ReservationRepository {
     }
 
     public int consume(String refType, String refId) {
+        return changeStatus(refType, refId, ReservationStatus.ACTIVE, ReservationStatus.CONSUMED);
+    }
+
+    public int release(String refType, String refId) {
+        return changeStatus(refType, refId, ReservationStatus.ACTIVE, ReservationStatus.RELEASED);
+    }
+
+    private int changeStatus(String refType, String refId, ReservationStatus from, ReservationStatus to) {
         return jdbcClient.sql("""
-                        UPDATE reservation SET status = :to
-                        WHERE ref_type = :refType AND ref_id = :refId AND status = :from
+                UPDATE reservation SET status = :to
+                WHERE ref_type = :refType AND ref_id = :refId AND status = :from
                 """)
-            .param("to", ReservationStatus.CONSUMED.name())
-            .param("from", ReservationStatus.ACTIVE.name())
+            .param("to", to.name())
+            .param("from", from.name())
             .param("refType", refType)
             .param("refId", refId)
             .update();
