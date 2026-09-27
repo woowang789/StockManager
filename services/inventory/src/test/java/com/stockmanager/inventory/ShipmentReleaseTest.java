@@ -57,9 +57,9 @@ class ShipmentReleaseTest {
         publishCanceled("evt-1", "REL-1", 3, 0, false);
 
         assertThat(waitForMovement("REL-1", "RELEASE")).isEqualTo(1);
-        assertThat(quantityOf("available")).isEqualTo(10);
-        assertThat(quantityOf("reserved")).isZero();
-        assertThat(quantityOf("putaway_wait")).isZero();
+        assertThat(quantityOf(1,"available")).isEqualTo(10);
+        assertThat(quantityOf(1,"reserved")).isZero();
+        assertThat(quantityOf(1,"putaway_wait")).isZero();
         assertThat(reservationStatusOf("REL-1")).isEqualTo("RELEASED");
     }
 
@@ -71,9 +71,9 @@ class ShipmentReleaseTest {
         publishCanceled("evt-2", "REL-2", 3, 0, true);
 
         assertThat(waitForMovement("REL-2", "RELEASE")).isEqualTo(1);
-        assertThat(quantityOf("available")).isEqualTo(7);
-        assertThat(quantityOf("reserved")).isZero();
-        assertThat(quantityOf("putaway_wait")).isEqualTo(3);
+        assertThat(quantityOf(1,"available")).isEqualTo(7);
+        assertThat(quantityOf(1,"reserved")).isZero();
+        assertThat(quantityOf(1,"putaway_wait")).isEqualTo(3);
     }
 
     @Test
@@ -85,8 +85,8 @@ class ShipmentReleaseTest {
 
         assertThat(waitForMovement("REL-3", "ADJUST")).isEqualTo(1);
 
-        assertThat(quantityOf("available")).isEqualTo(8);
-        assertThat(quantityOf("reserved")).isZero();
+        assertThat(quantityOf(1,"available")).isEqualTo(8);
+        assertThat(quantityOf(1,"reserved")).isZero();
         assertThat(reasonOf("REL-3")).isEqualTo(AdjustmentReason.SHORTAGE.name());
     }
 
@@ -102,7 +102,40 @@ class ShipmentReleaseTest {
         sleep(Duration.ofSeconds(2));
         assertThat(movementCount("REL-4", "RELEASE")).isEqualTo(1);
         assertThat(movementCount("REL-4", "ADJUST")).isEqualTo(1);
-        assertThat(quantityOf("available")).isEqualTo(9);
+        assertThat(quantityOf(1,"available")).isEqualTo(9);
+    }
+
+    @Test
+    @DisplayName("결품이 두 품목이어도 모두 반영된다")
+    void adjustsShortagesOfTwoProducts() {
+        stockAdjustmentService.adjust(
+            new StockChange("DC", 1, StockState.AVAILABLE, 10), AdjustmentReason.COUNT_DIFF, "test");
+        stockAdjustmentService.adjust(
+            new StockChange("DC", 2, StockState.AVAILABLE, 10), AdjustmentReason.COUNT_DIFF, "test");
+        reservationService.reserve(new ReserveCommand("ORDER", "REL-5", "DC",
+            List.of(new ReserveCommand.Item(1, 3), new ReserveCommand.Item(2, 4))), "sales");
+
+        publishCanceledOfTwoProducts("evt-6", "REL-5");
+
+        assertThat(waitForMovement("REL-5", "RELEASE")).isEqualTo(1);
+
+        assertThat(quantityOf(1,"available")).isEqualTo(8);
+        assertThat(quantityOf(2,"available")).isEqualTo(9);
+        assertThat(quantityOf(1, "reserved")).isZero();
+        assertThat(quantityOf(2, "reserved")).isZero();
+        assertThat(reservationStatusOf("REL-5")).isEqualTo("RELEASED");
+        assertThat(movementCount("REL-5", "ADJUST")).isEqualTo(1);
+        assertThat(entryCountOf("REL-5", "ADJUST")).isEqualTo(2);
+    }
+
+    private void publishCanceledOfTwoProducts(String eventId, String orderNo) {
+        String payload = """
+                {"eventId":"%s","orderNo":"%s","locationCode":"DC",
+                 "items":[{"productId":1,"quantity":3},{"productId":2,"quantity":4}],
+                 "shortages":[{"productId":1,"quantity":2},{"productId":2,"quantity":1}],
+                 "picked":false,"occurredAt":"2026-09-26T00:00:00Z"}
+                """.formatted(eventId, orderNo);
+        send(orderNo, payload);
     }
 
 
@@ -121,6 +154,10 @@ class ShipmentReleaseTest {
                  "items":[{"productId":1,"quantity":%d}],"shortages":[%s],"picked":%b,
                  "occurredAt":"2026-09-26T00:00:00Z"}
                 """.formatted(eventId, orderNo, quantity, shortages, picked);
+        send(orderNo, payload);
+    }
+
+    private void send(String orderNo, String payload) {
         kafkaTemplate.send(new ProducerRecord<>(TOPIC, null, orderNo, payload,
                 List.of(new RecordHeader(EventHeaders.EVENT_TYPE,
                     "ShipmentCanceled".getBytes(StandardCharsets.UTF_8)))))
@@ -147,6 +184,17 @@ class ShipmentReleaseTest {
             .single();
     }
 
+    private int entryCountOf(String orderNo, String type) {
+        return jdbcClient.sql("""
+                        SELECT COUNT(*) FROM stock_entry e JOIN stock_movement m ON m.id = e.movement_id
+                        WHERE m.type = :type AND m.ref_id = :refId
+                        """)
+            .param("type", type)
+            .param("refId", orderNo)
+            .query(Integer.class)
+            .single();
+    }
+
     private String reasonOf(String orderNo) {
         return jdbcClient.sql("SELECT reason FROM stock_movement WHERE type = 'ADJUST' AND ref_id = :refId")
             .param("refId", orderNo)
@@ -155,14 +203,16 @@ class ShipmentReleaseTest {
     }
 
     private String reservationStatusOf(String orderNo) {
-        return jdbcClient.sql("SELECT status FROM reservation WHERE ref_id = :refId")
+        return jdbcClient.sql("SELECT status FROM reservation WHERE ref_id = :refId LIMIT 1")
             .param("refId", orderNo)
             .query(String.class)
             .single();
     }
 
-    private int quantityOf(String column) {
-        return jdbcClient.sql("SELECT %s FROM stock WHERE location_code = 'DC' AND product_id = 1".formatted(column))
+    private int quantityOf(long productId, String column) {
+        return jdbcClient.sql("SELECT %s FROM stock WHERE location_code = 'DC' AND product_id = :productId"
+                .formatted(column))
+            .param("productId", productId)
             .query(Integer.class)
             .single();
     }

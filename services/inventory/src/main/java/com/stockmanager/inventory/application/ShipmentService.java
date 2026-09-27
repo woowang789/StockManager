@@ -61,10 +61,14 @@ public class ShipmentService {
             transactionTemplate.executeWithoutResult(status -> {
                 reservationRepository.release(REF_TYPE, event.orderNo());
                 stockMover.move(movement, event.occurredAt());
-                event.shortages().forEach(shortage ->
-                    stockMover.move(toShortageMovement(event, shortage), event.occurredAt()));
+                if (!event.shortages().isEmpty()) {
+                    stockMover.move(toShortageMovement(event), event.occurredAt());
+                }
             });
         } catch (DuplicateKeyException exception) {
+            if (stockMovementRepository.findIdByIdempotencyKey(movement.idempotencyKey()).isEmpty()) {
+                throw exception;
+            }
             log.info("이미 반영된 취소입니다: {}", movement.idempotencyKey());
         }
     }
@@ -79,12 +83,15 @@ public class ShipmentService {
         return new StockMovementCommand(MovementType.RELEASE, REF_TYPE, event.orderNo(), null, "wms", changes);
     }
 
-    private StockMovementCommand toShortageMovement(ShipmentCanceled event, ShipmentCanceled.Item shortage) {
+    private StockMovementCommand toShortageMovement(ShipmentCanceled event) {
         StockState from = event.picked() ? StockState.PUTAWAY_WAIT : StockState.AVAILABLE;
-        StockChange change =
-            new StockChange(event.locationCode(), shortage.productId(), from, -shortage.quantity());
+        List<StockChange> changes = event.shortages().stream()
+            .map(shortage -> new StockChange(
+                event.locationCode(), shortage.productId(), from, -shortage.quantity()))
+            .toList();
+
         return new StockMovementCommand(MovementType.ADJUST, REF_TYPE, event.orderNo(),
-            AdjustmentReason.SHORTAGE.name(), "wms", List.of(change));
+            AdjustmentReason.SHORTAGE.name(), "wms", changes);
     }
 
     private StockMovementCommand toMovement(ShipmentShipped event) {
