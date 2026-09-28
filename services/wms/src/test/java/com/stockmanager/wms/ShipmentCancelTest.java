@@ -1,16 +1,24 @@
 package com.stockmanager.wms;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.stockmanager.common.event.EventHeaders;
+import com.stockmanager.common.event.OrderCancelRequested;
 import com.stockmanager.common.event.ShipmentCanceled;
 import com.stockmanager.wms.application.ShipmentService;
 import com.stockmanager.wms.domain.ShipmentLine;
+import com.stockmanager.wms.domain.ShipmentStatus;
 import com.stockmanager.wms.infrastructure.ShipmentRepository;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.header.internals.RecordHeader;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,6 +29,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
 @Import(TestcontainersConfiguration.class)
@@ -43,6 +52,9 @@ class ShipmentCancelTest {
 
     @Autowired
     ObjectMapper objectMapper;
+
+    @Autowired
+    TransactionTemplate transactionTemplate;
 
     @BeforeEach
     void clearAll() {
@@ -105,6 +117,60 @@ class ShipmentCancelTest {
         assertThat(event.items()).containsExactly(new ShipmentCanceled.Item(1, 3));
         assertThat(event.shortages()).containsExactly(new ShipmentCanceled.Item(1, 2));
         assertThat(event.picked()).isTrue();
+    }
+
+    @Test
+    @DisplayName("결품을 적는 사이에 피킹되면 취소 이벤트를 내지 않는다")
+    void doesNotPublishWhenPickedUnderneath() {
+        shipmentRepository.insert("ORD-5", "DC", List.of(new ShipmentLine(1, 3)));
+
+        Future<?> canceling = cancelWhile("ORD-5", ShipmentStatus.PICKED,
+            () -> shipmentService.cancelForShortage("ORD-5", List.of(new ShipmentLine(1, 1))));
+
+        assertThatThrownBy(canceling::get).hasRootCauseInstanceOf(IllegalStateException.class);
+
+        assertThat(statusOf("ORD-5")).isEqualTo("PICKED");
+        assertThat(canceledPayloadOf("ORD-5")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("취소 이벤트를 처리하는 사이에 피킹되면 처리 기록도 남기지 않아 다시 처리된다")
+    void retriesWhenPickedUnderneath() {
+        shipmentRepository.insert("ORD-6", "DC", List.of(new ShipmentLine(1, 3)));
+        OrderCancelRequested event = new OrderCancelRequested("evt-6", "ORD-6", Instant.now());
+
+        Future<?> canceling = cancelWhile("ORD-6", ShipmentStatus.PICKED, () -> shipmentService.cancel(event));
+
+        assertThatThrownBy(canceling::get).hasRootCauseInstanceOf(IllegalStateException.class);
+        assertThat(canceledPayloadOf("ORD-6")).isEmpty();
+        assertThat(processedCount("evt-6")).isZero();
+
+        shipmentService.cancel(event);
+
+        assertThat(statusOf("ORD-6")).isEqualTo("CANCELED");
+        assertThat(canceledEventOf("ORD-6").picked()).isTrue();
+    }
+
+    private Future<?> cancelWhile(String orderNo, ShipmentStatus to, Runnable cancel) {
+        try (ExecutorService pool = Executors.newSingleThreadExecutor()) {
+            List<Future<?>> started = new ArrayList<>();
+            transactionTemplate.executeWithoutResult(status -> {
+                jdbcClient.sql("UPDATE shipment SET status = :to WHERE order_no = :orderNo")
+                    .param("to", to.name())
+                    .param("orderNo", orderNo)
+                    .update();
+                started.add(pool.submit(cancel));
+                sleep(Duration.ofMillis(500));
+            });
+            return started.getFirst();
+        }
+    }
+
+    private int processedCount(String eventId) {
+        return jdbcClient.sql("SELECT COUNT(*) FROM processed_event WHERE event_id = :eventId")
+            .param("eventId", eventId)
+            .query(Integer.class)
+            .single();
     }
 
     private void publishCancel(String eventId, String orderNo) {

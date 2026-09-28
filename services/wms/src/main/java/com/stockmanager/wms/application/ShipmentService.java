@@ -55,7 +55,7 @@ public class ShipmentService {
                     return;
                 }
                 boolean picked = shipment.status() != ShipmentStatus.READY;
-                shipmentRepository.changeStatus(event.orderNo(), shipment.status(), ShipmentStatus.CANCELED);
+                cancelOrFail(event.orderNo(), shipment.status());
                 shipmentEventRecorder.shipmentCanceled(
                     event.orderNo(), shipment.locationCode(), shipment.lines(), List.of(), picked);
             });
@@ -73,12 +73,18 @@ public class ShipmentService {
                     "취소할 수 없는 상태입니다: " + orderNo + " (" + shipment.status() + ")");
             }
             boolean picked = shipment.status() != ShipmentStatus.READY;
-            shipmentRepository.changeStatus(orderNo, shipment.status(), ShipmentStatus.CANCELED);
+            cancelOrFail(orderNo, shipment.status());
             shipmentEventRecorder.shipmentCanceled(
                 orderNo, shipment.locationCode(), shipment.lines(), shortages, picked);
             return shipmentRepository.find(orderNo).orElseThrow();
         });
 
+    }
+
+    private void cancelOrFail(String orderNo, ShipmentStatus from) {
+        if (shipmentRepository.changeStatus(orderNo, from, ShipmentStatus.CANCELED) == 0) {
+            throw new IllegalStateException("취소하는 사이에 상태가 바뀌었습니다: " + orderNo + " (" + from + ")");
+        }
     }
 
     public Shipment pick(String orderNo){
