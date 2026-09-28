@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.stockmanager.common.event.EventHeaders;
 import com.stockmanager.common.event.OrderCancelRequested;
 import com.stockmanager.common.event.ShipmentCanceled;
+import com.stockmanager.common.web.ConcurrentUpdateException;
 import com.stockmanager.wms.application.ShipmentService;
 import com.stockmanager.wms.domain.ShipmentLine;
 import com.stockmanager.wms.domain.ShipmentStatus;
@@ -120,6 +121,44 @@ class ShipmentCancelTest {
     }
 
     @Test
+    @DisplayName("출하에 없는 상품은 결품으로 보고할 수 없다")
+    void rejectsShortageOfUnshippedProduct() {
+        shipmentRepository.insert("ORD-7", "DC", List.of(new ShipmentLine(1, 3)));
+        shipmentService.pick("ORD-7");
+
+        assertThatThrownBy(() -> shipmentService.cancelForShortage("ORD-7", List.of(new ShipmentLine(99, 1))))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("출하에 없는 상품은 결품으로 보고할 수 없습니다");
+
+        assertThat(statusOf("ORD-7")).isEqualTo("PICKED");
+        assertThat(canceledPayloadOf("ORD-7")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("결품이 출하 수량보다 많을 수 없다")
+    void rejectsShortageBeyondShippedQuantity() {
+        shipmentRepository.insert("ORD-8", "DC", List.of(new ShipmentLine(1, 3)));
+        shipmentService.pick("ORD-8");
+
+        assertThatThrownBy(() -> shipmentService.cancelForShortage("ORD-8", List.of(new ShipmentLine(1, 4))))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("결품이 출하 수량보다 많습니다");
+        assertThat(statusOf("ORD-8")).isEqualTo("PICKED");
+        assertThat(canceledPayloadOf("ORD-8")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("같은 상품을 나눠 세면 합쳐서 한 줄로 싣는다")
+    void mergesShortagesOfSameProduct() {
+        shipmentRepository.insert("ORD-9", "DC", List.of(new ShipmentLine(1, 3)));
+        shipmentService.pick("ORD-9");
+
+        shipmentService.cancelForShortage("ORD-9", List.of(new ShipmentLine(1, 1), new ShipmentLine(1, 2)));
+
+        assertThat(canceledEventOf("ORD-9").shortages()).containsExactly(new ShipmentCanceled.Item(1, 3));
+    }
+
+    @Test
     @DisplayName("결품을 적는 사이에 피킹되면 취소 이벤트를 내지 않는다")
     void doesNotPublishWhenPickedUnderneath() {
         shipmentRepository.insert("ORD-5", "DC", List.of(new ShipmentLine(1, 3)));
@@ -127,7 +166,7 @@ class ShipmentCancelTest {
         Future<?> canceling = cancelWhile("ORD-5", ShipmentStatus.PICKED,
             () -> shipmentService.cancelForShortage("ORD-5", List.of(new ShipmentLine(1, 1))));
 
-        assertThatThrownBy(canceling::get).hasRootCauseInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(canceling::get).hasRootCauseInstanceOf(ConcurrentUpdateException.class);
 
         assertThat(statusOf("ORD-5")).isEqualTo("PICKED");
         assertThat(canceledPayloadOf("ORD-5")).isEmpty();
@@ -141,7 +180,7 @@ class ShipmentCancelTest {
 
         Future<?> canceling = cancelWhile("ORD-6", ShipmentStatus.PICKED, () -> shipmentService.cancel(event));
 
-        assertThatThrownBy(canceling::get).hasRootCauseInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(canceling::get).hasRootCauseInstanceOf(ConcurrentUpdateException.class);
         assertThat(canceledPayloadOf("ORD-6")).isEmpty();
         assertThat(processedCount("evt-6")).isZero();
 

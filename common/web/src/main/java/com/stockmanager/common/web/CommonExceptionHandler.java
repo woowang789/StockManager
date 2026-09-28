@@ -22,8 +22,13 @@ public class CommonExceptionHandler extends ResponseEntityExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
     }
 
+    @ExceptionHandler(ConcurrentUpdateException.class)
+    ProblemDetail handleConcurrentUpdate(ConcurrentUpdateException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+    }
+
     @Override
-    protected @Nullable ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException exception,
+    protected ResponseEntity<Object> handleMethodArgumentNotValid(MethodArgumentNotValidException exception,
                             HttpHeaders headers, HttpStatusCode status, WebRequest request) {
         ProblemDetail body = ProblemDetail.forStatusAndDetail(status, "요청 값이 올바르지 않습니다");
         Map<String, String> errors = new LinkedHashMap<>();
