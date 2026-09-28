@@ -52,8 +52,7 @@ public class ShipmentService {
         try {
             transactionTemplate.executeWithoutResult(status -> {
                 processedEventRepository.insert(event.eventId());
-                Shipment shipment = shipmentRepository.find(event.orderNo())
-                    .orElseThrow(() -> new IllegalArgumentException("출하 작업이 없습니다: " + event.orderNo()));
+                Shipment shipment = find(event.orderNo());
                 if (shipment.status() == ShipmentStatus.SHIPPED) {
                     log.info("이미 운송해서 취소하지 않습니다: {}", event.orderNo());
                     return;
@@ -70,8 +69,7 @@ public class ShipmentService {
 
     public Shipment cancelForShortage(String orderNo, List<ShipmentLine> shortages) {
         return transactionTemplate.execute(status -> {
-            Shipment shipment = shipmentRepository.find(orderNo)
-                .orElseThrow(() -> new IllegalArgumentException("출하 작업이 없습니다: " + orderNo));
+            Shipment shipment = find(orderNo);
             if (shipment.status() == ShipmentStatus.SHIPPED || shipment.status() == ShipmentStatus.CANCELED) {
                 throw new IllegalArgumentException(
                     "취소할 수 없는 상태입니다: " + orderNo + " (" + shipment.status() + ")");
@@ -124,8 +122,7 @@ public class ShipmentService {
     private Shipment advance(String orderNo, ShipmentStatus from, ShipmentStatus to) {
         return transactionTemplate.execute(status -> {
             int changed = shipmentRepository.changeStatus(orderNo, from, to);
-            Shipment shipment = shipmentRepository.find(orderNo)
-                .orElseThrow(() -> new IllegalArgumentException("출하 작업이 없습니다: " + orderNo));
+            Shipment shipment = find(orderNo);
             if (changed == 0 && shipment.status() != to) {
                 throw new IllegalArgumentException(
                     to + "로 보낼 수 없는 상태입니다: " + orderNo + " (" + shipment.status() + ")");
@@ -137,8 +134,7 @@ public class ShipmentService {
     public Shipment ship(String orderNo) {
         Shipment shipped = transactionTemplate.execute(status -> {
             int changed = shipmentRepository.changeStatus(orderNo, ShipmentStatus.PACKED, ShipmentStatus.SHIPPED);
-            Shipment shipment = shipmentRepository.find(orderNo)
-                .orElseThrow(() -> new IllegalArgumentException("출하 작업이 없습니다: " + orderNo));
+            Shipment shipment = find(orderNo);
             if (changed == 1) {
                 shipmentEventRecorder.shipmentShipped(orderNo, shipment.locationCode(), shipment.lines());
             } else if (shipment.status() != ShipmentStatus.SHIPPED) {

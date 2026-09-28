@@ -1,6 +1,7 @@
 package com.stockmanager.inventory.application;
 
 import com.stockmanager.common.event.InboundInspected;
+import com.stockmanager.common.event.InboundStored;
 import com.stockmanager.inventory.domain.MovementType;
 import com.stockmanager.inventory.domain.StockChange;
 import com.stockmanager.inventory.domain.StockMovementCommand;
@@ -44,6 +45,31 @@ public class InboundService {
         } catch (DuplicateKeyException exception) {
             log.info("이미 반영한 입고입니다: {}", movement.idempotencyKey());
         }
+    }
+
+    public void store(InboundStored event) {
+        StockMovementCommand movement = toMovement(event);
+        if (stockMovementRepository.findIdByIdempotencyKey(movement.idempotencyKey()).isPresent()) {
+            log.info("이미 반영한 적치입니다: {}", movement.idempotencyKey());
+            return;
+        }
+        try {
+            transactionTemplate.executeWithoutResult(status -> stockMover.move(movement, event.occurredAt()));
+        } catch (DuplicateKeyException exception) {
+            log.info("이미 반영한 적치입니다: {}", movement.idempotencyKey());
+        }
+    }
+
+    private StockMovementCommand toMovement(InboundStored event) {
+        List<StockChange> changes = new ArrayList<>();
+        event.items().forEach(item -> {
+            changes.add(new StockChange(
+                event.locationCode(), item.productId(), StockState.PUTAWAY_WAIT, -item.quantity()));
+            changes.add(new StockChange(
+                event.locationCode(), item.productId(), StockState.AVAILABLE, item.quantity()));
+        });
+        return new StockMovementCommand(MovementType.PUTAWAY, REF_TYPE, String.valueOf(event.inboundId()),
+            null, "wms", changes);
     }
 
     private StockMovementCommand toMovement(InboundInspected event) {

@@ -4,6 +4,7 @@ import com.stockmanager.wms.application.InboundService;
 import com.stockmanager.wms.domain.Inbound;
 import com.stockmanager.wms.domain.InboundLine;
 import com.stockmanager.wms.domain.InspectionLine;
+import com.stockmanager.wms.domain.PutawayLine;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -42,6 +43,16 @@ class InboundController {
         return InboundResponse.from(inboundService.inspect(inboundId, results));
     }
 
+    @GetMapping("/inbounds/{inboundId}/putaway")
+    List<PutawayResponse> putawayGuide(@PathVariable long inboundId) {
+        return inboundService.putawayGuide(inboundId).stream().map(PutawayResponse::from).toList();
+    }
+
+    @PostMapping("/inbounds/{inboundId}/store")
+    InboundResponse store(@PathVariable long inboundId) {
+        return InboundResponse.from(inboundService.store(inboundId));
+    }
+
     @GetMapping("/inbounds/{inboundId}")
     InboundResponse find(@PathVariable long inboundId) {
         return InboundResponse.from(inboundService.find(inboundId));
@@ -57,6 +68,13 @@ class InboundController {
                     @NotNull @PositiveOrZero Integer defectiveQuantity) {
         }
     }
+
+    record PutawayResponse(long productId, int quantity, String binCode) {
+        static PutawayResponse from(PutawayLine line) {
+            return new PutawayResponse(line.productId(), line.quantity(), line.binCode());
+        }
+    }
+
 
     record InboundResponse(long inboundId, String locationCode, String status, List<Item> items){
         record Item(long productId, int expectedQuantity, Integer goodQuantity, Integer defectiveQuantity) {

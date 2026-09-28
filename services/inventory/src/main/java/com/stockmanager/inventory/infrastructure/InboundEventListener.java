@@ -2,6 +2,7 @@ package com.stockmanager.inventory.infrastructure;
 
 import com.stockmanager.common.event.EventHeaders;
 import com.stockmanager.common.event.InboundInspected;
+import com.stockmanager.common.event.InboundStored;
 import com.stockmanager.inventory.application.InboundService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,6 +16,8 @@ import tools.jackson.databind.ObjectMapper;
 class InboundEventListener {
 
     private static final String INBOUND_INSPECTED = InboundInspected.class.getSimpleName();
+
+    private static final String INBOUND_STORED = InboundStored.class.getSimpleName();
 
     private static final Logger log = LoggerFactory.getLogger(InboundEventListener.class);
 
@@ -30,6 +33,10 @@ class InboundEventListener {
     void onInboundEvent(@Header(EventHeaders.EVENT_TYPE) String eventType, @Payload String payload) {
         if (INBOUND_INSPECTED.equals(eventType)) {
             inboundService.apply(objectMapper.readValue(payload, InboundInspected.class));
+            return;
+        }
+        if(INBOUND_STORED.equals(eventType)){
+            inboundService.store(objectMapper.readValue(payload, InboundStored.class));
             return;
         }
         log.debug("아직 처리하지 않는 이벤트입니다: {}",eventType);
