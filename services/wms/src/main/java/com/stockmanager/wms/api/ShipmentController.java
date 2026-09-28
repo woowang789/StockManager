@@ -50,7 +50,7 @@ class ShipmentController {
         return ShipmentResponse.from(shipmentService.find(orderNo));
     }
 
-    record ShortageRequest(@NotEmpty List<@Valid Item> items){
+    record ShortageRequest(@NotEmpty @Valid List<Item> items){
 
         record Item(@NotNull Long productId, @NotNull @Positive Integer quantity) {
         }
