@@ -7,6 +7,14 @@ spring:
     password: wms
   flyway:
     fail-on-missing-locations: true
+  http:
+    serviceclient:
+      inventory:
+        base-url: http://localhost:8081
+        connect-timeout: 1s
+        read-timeout: 2s
+        default-header:
+          X-User-Id: wms
   kafka:
     bootstrap-servers: localhost:9092
     consumer:
