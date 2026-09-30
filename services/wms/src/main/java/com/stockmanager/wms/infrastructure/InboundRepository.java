@@ -23,13 +23,14 @@ public class InboundRepository {
         this.jdbcClient = jdbcClient;
     }
 
-    public long insert(String locationCode, List<InboundLine> lines) {
+    public long insert(String locationCode, Long transferId, List<InboundLine> lines) {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcClient.sql("""
-                        INSERT INTO inbound (location_code, status, created_at)
-                        VALUES (:locationCode, :status, :createdAt)
+                        INSERT INTO inbound (location_code, transfer_id ,status, created_at)
+                        VALUES (:locationCode, :transferId ,:status, :createdAt)
                 """)
             .param("locationCode", locationCode)
+            .param("transferId", transferId)
             .param("status", InboundStatus.ARRIVED.name())
             .param("createdAt", LocalDateTime.ofInstant(Instant.now(), ZoneOffset.UTC))
             .update(keyHolder);
@@ -75,10 +76,10 @@ public class InboundRepository {
     }
 
     public Optional<Inbound> find (long inboundId){
-        return jdbcClient.sql("SELECT id, location_code, status FROM inbound WHERE id = :inboundId")
+        return jdbcClient.sql("SELECT id, location_code, transfer_id, status FROM inbound WHERE id = :inboundId")
             .param("inboundId", inboundId)
-            .query((rs, rownum) -> new Inbound(rs.getLong("id"), rs.getString("location_code"),
-                InboundStatus.valueOf(rs.getString("status")), lines(inboundId)))
+            .query((rs, rowNum) -> new Inbound(rs.getLong("id"), rs.getString("location_code"),
+                rs.getObject("transfer_id", Long.class), InboundStatus.valueOf(rs.getString("status")), lines(inboundId)))
             .optional();
     }
 

@@ -7,5 +7,6 @@ public enum MovementType {
     RESERVE,
     RELEASE,
     SHIP,
+    DISPATCH,
     ADJUST
 }

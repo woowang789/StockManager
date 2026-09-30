@@ -1,9 +1,11 @@
 package com.stockmanager.wms.application;
 
+import com.stockmanager.wms.domain.InboundLine;
 import com.stockmanager.wms.domain.Transfer;
 import com.stockmanager.wms.domain.TransferLine;
 import com.stockmanager.wms.domain.TransferStatus;
 import com.stockmanager.wms.infrastructure.InventoryClient;
+import com.stockmanager.wms.infrastructure.TransferEventRecorder;
 import com.stockmanager.wms.infrastructure.TransferRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,11 +26,17 @@ public class TransferService {
 
     private final TransferRepository transferRepository;
     private final InventoryClient inventoryClient;
+    private final InboundService inboundService;
+    private final TransferEventRecorder transferEventRecorder;
     private final TransactionTemplate transactionTemplate;
 
-    TransferService(TransferRepository transferRepository, InventoryClient inventoryClient, TransactionTemplate transactionTemplate) {
+    TransferService(TransferRepository transferRepository, InventoryClient inventoryClient,
+                    InboundService inboundService, TransferEventRecorder transferEventRecorder,
+                    TransactionTemplate transactionTemplate) {
         this.transferRepository = transferRepository;
         this.inventoryClient = inventoryClient;
+        this.inboundService = inboundService;
+        this.transferEventRecorder = transferEventRecorder;
         this.transactionTemplate = transactionTemplate;
     }
 
@@ -44,6 +52,46 @@ public class TransferService {
         for (long transferId : transferRepository.findPendingBefore(createdBefore)) {
             reserve(find(transferId));
         }
+    }
+
+    public Transfer pick(long transferId) {
+        return advance(transferId, TransferStatus.REQUESTED, TransferStatus.PICKED);
+    }
+
+    public Transfer dispatch(long transferId) {
+        return transactionTemplate.execute(status -> {
+            int changed = transferRepository.changeStatus(
+                transferId, TransferStatus.PICKED, TransferStatus.IN_TRANSIT);
+            Transfer transfer = find(transferId);
+            if (changed == 0) {
+                if (transfer.status() != TransferStatus.IN_TRANSIT) {
+                    throw new IllegalArgumentException(
+                        "이동할 수 없는 상태입니다: " + transferId + " (" + transfer.status() + ")");
+                }
+                return transfer;
+            }
+            inboundService.arriveFromTransfer(transferId, transfer.toLocationCode(), toExpectedLines(transfer));
+            transferEventRecorder.transferDispatched(transfer);
+            return transfer;
+        });
+    }
+
+    private Transfer advance(long transferId, TransferStatus from, TransferStatus to) {
+        return transactionTemplate.execute(status -> {
+            int changed = transferRepository.changeStatus(transferId, from, to);
+            Transfer transfer = find(transferId);
+            if (changed == 0 && transfer.status() != to) {
+                throw new IllegalArgumentException(
+                    to + "로 보낼 수 없는 상태입니다: " + transferId + " (" + transfer.status() + ")");
+            }
+            return transfer;
+        });
+    }
+
+    private List<InboundLine> toExpectedLines(Transfer transfer) {
+        return transfer.lines().stream()
+            .map(line -> InboundLine.expected(line.productId(), line.quantity()))
+            .toList();
     }
 
     public Transfer find(long transferId) {

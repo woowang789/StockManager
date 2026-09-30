@@ -76,12 +76,12 @@ class InboundController {
     }
 
 
-    record InboundResponse(long inboundId, String locationCode, String status, List<Item> items){
+    record InboundResponse(long inboundId, String locationCode, Long transferId ,String status, List<Item> items){
         record Item(long productId, int expectedQuantity, Integer goodQuantity, Integer defectiveQuantity) {
         }
 
         static InboundResponse from(Inbound inbound) {
-            return new InboundResponse(inbound.id(), inbound.locationCode(), inbound.status().name(),
+            return new InboundResponse(inbound.id(), inbound.locationCode(), inbound.transferId(), inbound.status().name(),
                 inbound.lines().stream()
                     .map(line -> new Item(line.productId(), line.expectedQuantity(),
                         line.goodQuantity(), line.defectiveQuantity()))

@@ -34,6 +34,16 @@ class TransferController {
         );
     }
 
+    @PostMapping("/transfers/{transferId}/pick")
+    TransferResponse pick(@PathVariable long transferId) {
+        return TransferResponse.from(transferService.pick(transferId));
+    }
+
+    @PostMapping("/transfers/{transferId}/dispatch")
+    TransferResponse dispatch(@PathVariable long transferId) {
+        return TransferResponse.from(transferService.dispatch(transferId));
+    }
+
     @GetMapping("/transfers/{transferId}")
     TransferResponse find(@PathVariable long transferId) {
         return TransferResponse.from(transferService.find(transferId));

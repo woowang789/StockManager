@@ -38,8 +38,12 @@ public class InboundService {
     }
 
     public Inbound arrive(String locationCode, List<InboundLine> lines) {
-        long inboundId = inboundRepository.insert(locationCode, lines);
+        long inboundId = inboundRepository.insert(locationCode, null, lines);
         return inboundRepository.find(inboundId).orElseThrow();
+    }
+
+    public long arriveFromTransfer(long transferId, String locationCode, List<InboundLine> lines) {
+        return inboundRepository.insert(locationCode, transferId, lines);
     }
 
     public Inbound inspect(long inboundId, List<InspectionLine> results) {
