@@ -2,6 +2,7 @@ package com.stockmanager.wms.infrastructure;
 
 import com.stockmanager.wms.domain.Inbound;
 import com.stockmanager.wms.domain.InboundLine;
+import com.stockmanager.wms.domain.InboundOrigin;
 import com.stockmanager.wms.domain.InboundStatus;
 import com.stockmanager.wms.domain.InspectionLine;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -23,14 +24,14 @@ public class InboundRepository {
         this.jdbcClient = jdbcClient;
     }
 
-    public long insert(String locationCode, Long transferId, List<InboundLine> lines) {
+    public long insert(String locationCode, InboundOrigin origin, List<InboundLine> lines) {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcClient.sql("""
                         INSERT INTO inbound (location_code, transfer_id ,status, created_at)
                         VALUES (:locationCode, :transferId ,:status, :createdAt)
                 """)
             .param("locationCode", locationCode)
-            .param("transferId", transferId)
+            .param("transferId", origin.transferIdOrNull())
             .param("status", InboundStatus.ARRIVED.name())
             .param("createdAt", LocalDateTime.ofInstant(Instant.now(), ZoneOffset.UTC))
             .update(keyHolder);
@@ -79,10 +80,10 @@ public class InboundRepository {
         return jdbcClient.sql("SELECT id, location_code, transfer_id, status FROM inbound WHERE id = :inboundId")
             .param("inboundId", inboundId)
             .query((rs, rowNum) -> new Inbound(rs.getLong("id"), rs.getString("location_code"),
-                rs.getObject("transfer_id", Long.class), InboundStatus.valueOf(rs.getString("status")), lines(inboundId)))
+                InboundOrigin.ofTransferId(rs.getObject("transfer_id", Long.class)), InboundStatus.valueOf(rs.getString("status")), lines(inboundId)))
             .optional();
     }
-
+    
     private List<InboundLine> lines(long inboundId) {
         return jdbcClient.sql("""
                     SELECT product_id, expected_quantity, good_quantity, defective_quantity

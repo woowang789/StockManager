@@ -22,8 +22,6 @@ public class InboundService {
 
     private static final String REF_TYPE = "INBOUND";
 
-    private static final String STORE = "STORE";
-
     private final StockMovementRepository stockMovementRepository;
     private final StockMover stockMover;
     private final TransactionTemplate transactionTemplate;
@@ -73,7 +71,7 @@ public class InboundService {
     }
 
     private StockMovementCommand toMovement(InboundInspected event) {
-        StockState goodState = STORE.equals(event.locationCode()) ? StockState.AVAILABLE : StockState.PUTAWAY_WAIT;
+        StockState goodState = StockState.forReceivedGoods(event.locationCode());
         List<StockChange> changes = new ArrayList<>();
         event.items().forEach(item ->{
             if(item.goodQuantity() > 0) {

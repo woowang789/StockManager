@@ -12,5 +12,8 @@ public enum StockState {
         return name().toLowerCase();
     }
 
+    public static StockState forReceivedGoods(String locationCode) {
+        return "STORE".equals(locationCode) ? AVAILABLE : PUTAWAY_WAIT;
+    }
 
 }

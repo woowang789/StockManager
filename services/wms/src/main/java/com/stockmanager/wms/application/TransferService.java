@@ -1,9 +1,12 @@
 package com.stockmanager.wms.application;
 
 import com.stockmanager.wms.domain.InboundLine;
+import com.stockmanager.wms.domain.InboundOrigin;
+import com.stockmanager.wms.domain.InspectionLine;
 import com.stockmanager.wms.domain.Transfer;
 import com.stockmanager.wms.domain.TransferLine;
 import com.stockmanager.wms.domain.TransferStatus;
+import com.stockmanager.wms.infrastructure.InboundRepository;
 import com.stockmanager.wms.infrastructure.InventoryClient;
 import com.stockmanager.wms.infrastructure.TransferEventRecorder;
 import com.stockmanager.wms.infrastructure.TransferRepository;
@@ -14,8 +17,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 public class TransferService {
@@ -26,16 +31,16 @@ public class TransferService {
 
     private final TransferRepository transferRepository;
     private final InventoryClient inventoryClient;
-    private final InboundService inboundService;
+    private final InboundRepository inboundRepository;
     private final TransferEventRecorder transferEventRecorder;
     private final TransactionTemplate transactionTemplate;
 
     TransferService(TransferRepository transferRepository, InventoryClient inventoryClient,
-                    InboundService inboundService, TransferEventRecorder transferEventRecorder,
+                    InboundRepository inboundRepository, TransferEventRecorder transferEventRecorder,
                     TransactionTemplate transactionTemplate) {
         this.transferRepository = transferRepository;
         this.inventoryClient = inventoryClient;
-        this.inboundService = inboundService;
+        this.inboundRepository = inboundRepository;
         this.transferEventRecorder = transferEventRecorder;
         this.transactionTemplate = transactionTemplate;
     }
@@ -44,7 +49,9 @@ public class TransferService {
         if (fromLocationCode.equals(toLocationCode)) {
             throw new IllegalArgumentException("같은 거점으로는 이동할 수 없습니다: " + fromLocationCode);
         }
-        long transferId = transferRepository.insert(fromLocationCode, toLocationCode, lines);
+        requireDistinctProducts(lines.stream().map(TransferLine::productId).toList());
+        long transferId = transactionTemplate.execute(
+            status -> transferRepository.insert(fromLocationCode, toLocationCode, lines));
         return reserve(find(transferId));
     }
 
@@ -70,10 +77,19 @@ public class TransferService {
                 }
                 return transfer;
             }
-            inboundService.arriveFromTransfer(transferId, transfer.toLocationCode(), toExpectedLines(transfer));
+            inboundRepository.insert(
+                transfer.toLocationCode(), new InboundOrigin.Transfer(transferId), toExpectedLines(transfer));
             transferEventRecorder.transferDispatched(transfer);
             return transfer;
         });
+    }
+
+    public void receive(long transferId, List<InspectionLine> results) {
+        if (transferRepository.changeStatus(transferId, TransferStatus.IN_TRANSIT, TransferStatus.RECEIVED) == 0) {
+            throw new IllegalStateException("이동 중이 아닌 이동의 입고 문서입니다: " + transferId);
+        }
+        transferEventRecorder.transferReceived(find(transferId), results);
+
     }
 
     private Transfer advance(long transferId, TransferStatus from, TransferStatus to) {
@@ -99,6 +115,15 @@ public class TransferService {
             .orElseThrow(() -> new IllegalArgumentException("이동 요청이 없습니다: " + transferId));
     }
 
+    private void requireDistinctProducts(List<Long> productIds) {
+        Set<Long> seen = new HashSet<>();
+        for (long productId : productIds) {
+            if (!seen.add(productId)) {
+                throw new IllegalArgumentException("같은 상품이 두 줄로 들어 있습니다: 상품 " + productId);
+            }
+        }
+    }
+
     private Transfer reserve(Transfer transfer) {
         Optional<TransferStatus> result = requestReservation(transfer);
         if (result.isEmpty()) {
@@ -121,10 +146,8 @@ public class TransferService {
     }
 
     private Transfer confirm(Transfer transfer, TransferStatus result) {
-        return transactionTemplate.execute(status -> {
-            transferRepository.changeStatus(transfer.id(), TransferStatus.PENDING, result);
-            return find(transfer.id());
-        });
+        transferRepository.changeStatus(transfer.id(), TransferStatus.PENDING, result);
+        return find(transfer.id());
     }
 
     private InventoryClient.ReservationRequest toReservationRequest(Transfer transfer) {

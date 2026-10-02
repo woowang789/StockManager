@@ -15,6 +15,10 @@ public record StockMovementCommand(
         if (refType == null) {
             return null;
         }
+        return idempotencyKey(refType, refId, type);
+    }
+
+    public static String idempotencyKey(String refType, String refId, MovementType type) {
         return refType + ":" + refId + ":" + type.name();
     }
 }

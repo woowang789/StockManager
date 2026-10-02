@@ -8,5 +8,6 @@ public enum MovementType {
     RELEASE,
     SHIP,
     DISPATCH,
+    TRANSFER_RECEIVE,
     ADJUST
 }

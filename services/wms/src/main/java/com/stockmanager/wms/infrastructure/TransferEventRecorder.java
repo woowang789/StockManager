@@ -1,7 +1,9 @@
 package com.stockmanager.wms.infrastructure;
 
 import com.stockmanager.common.event.TransferDispatched;
+import com.stockmanager.common.event.TransferReceived;
 import com.stockmanager.common.messaging.OutboxRepository;
+import com.stockmanager.wms.domain.InspectionLine;
 import com.stockmanager.wms.domain.Transfer;
 import org.springframework.stereotype.Component;
 import java.time.Instant;
@@ -25,6 +27,16 @@ public class TransferEventRecorder {
             .toList();
         TransferDispatched event = new TransferDispatched(UUID.randomUUID().toString(), transfer.id(),
             transfer.fromLocationCode(), transfer.toLocationCode(), items, Instant.now());
+        outboxRepository.append(TOPIC, String.valueOf(transfer.id()), event);
+    }
+
+    public void transferReceived(Transfer transfer, List<InspectionLine> results) {
+        List<TransferReceived.Item> items = results.stream()
+            .map(result -> new TransferReceived.Item(
+                result.productId(), result.goodQuantity(), result.defectiveQuantity()))
+            .toList();
+        TransferReceived event = new TransferReceived(UUID.randomUUID().toString(), transfer.id(),
+            transfer.toLocationCode(), items, Instant.now());
         outboxRepository.append(TOPIC, String.valueOf(transfer.id()), event);
     }
 }

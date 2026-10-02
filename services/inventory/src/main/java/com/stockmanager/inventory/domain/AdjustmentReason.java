@@ -7,6 +7,7 @@ public enum AdjustmentReason {
     DAMAGED,
     DISPOSED,
     RETURNED,
-    COUNT_DIFF
+    COUNT_DIFF,
+    TRANSIT_LOSS
 
 }

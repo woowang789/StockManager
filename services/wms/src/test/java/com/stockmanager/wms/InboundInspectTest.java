@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import java.util.List;
 
@@ -42,6 +43,26 @@ class InboundInspectTest {
         assertThat(inbound.status()).isEqualTo(InboundStatus.ARRIVED);
         assertThat(inbound.lines()).containsExactly(new InboundLine(1, 10, null, null));
         assertThat(outboxCount(inbound.id())).isZero();
+    }
+
+    @Test
+    @DisplayName("같은 상품을 두 줄로 등록하면 받지 않는다")
+    void rejectsDuplicateProductOnArrival() {
+        assertThatThrownBy(() -> inboundService.arrive("DC",
+            List.of(InboundLine.expected(1, 10), InboundLine.expected(1, 5))))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("같은 상품이 두 줄로 들어 있습니다: 상품 1");
+        assertThat(inboundCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("품목을 저장하다 실패하면 입고 문서를 남기지 않는다")
+    void leavesNothingWhenItemInsertFails() {
+        assertThatThrownBy(() -> inboundService.arrive("DC",
+            List.of(InboundLine.expected(1, 10), InboundLine.expected(2, 0))))
+            .isInstanceOf(DataAccessException.class);
+
+        assertThat(inboundCount()).isZero();
     }
 
     @Test
@@ -104,6 +125,20 @@ class InboundInspectTest {
     }
 
     @Test
+    @DisplayName("같은 상품을 두 줄로 검수하면 받지 않는다")
+    void rejectsDuplicateProductOnInspection() {
+        long inboundId = inboundService.arrive("DC", List.of(InboundLine.expected(1, 10))).id();
+
+        assertThatThrownBy(() -> inboundService.inspect(inboundId,
+            List.of(new InspectionLine(1, 3, 0), new InspectionLine(1, 4, 0))))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("같은 상품이 두 줄로 들어 있습니다: 상품 1");
+        assertThat(statusOf(inboundId)).isEqualTo(InboundStatus.ARRIVED.name());
+        assertThat(outboxCount(inboundId)).isZero();
+
+    }
+
+    @Test
     @DisplayName("없는 입고 문서는 검수할 수 없다")
     void rejectsUnknownInbound() {
         assertThatThrownBy(() -> inboundService.inspect(404, List.of(new InspectionLine(1, 1, 0))))
@@ -124,6 +159,10 @@ class InboundInspectTest {
             .param("messageKey", String.valueOf(inboundId))
             .query(String.class)
             .single();
+    }
+
+    private int inboundCount() {
+        return jdbcClient.sql("SELECT COUNT(*) FROM inbound").query(Integer.class).single();
     }
 
     private String statusOf(long inboundId) {

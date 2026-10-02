@@ -6,6 +6,7 @@ import com.stockmanager.wms.application.InboundService;
 import com.stockmanager.wms.application.TransferService;
 import com.stockmanager.wms.domain.Inbound;
 import com.stockmanager.wms.domain.InboundLine;
+import com.stockmanager.wms.domain.InboundOrigin;
 import com.stockmanager.wms.domain.InboundStatus;
 import com.stockmanager.wms.domain.Transfer;
 import com.stockmanager.wms.domain.TransferLine;
@@ -101,7 +102,7 @@ class TransferDispatchTest {
 
         assertThat(inbound.locationCode()).isEqualTo("STORE");
         assertThat(inbound.status()).isEqualTo(InboundStatus.ARRIVED);
-        assertThat(inbound.fromTransfer()).isTrue();
+        assertThat(inbound.origin()).isEqualTo(new InboundOrigin.Transfer(transferId));
 
         assertThat(inbound.lines()).containsExactly(new InboundLine(1, 3, null, null));
     }
@@ -141,8 +142,7 @@ class TransferDispatchTest {
     void supplierInboundHasNoTransfer() {
         Inbound inbound = inboundService.arrive("DC", List.of(InboundLine.expected(1, 10)));
 
-        assertThat(inbound.fromTransfer()).isFalse();
-        assertThat(inbound.transferId()).isNull();
+        assertThat(inbound.origin()).isEqualTo(new InboundOrigin.Supplier());
     }
 
     private long requested() {

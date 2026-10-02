@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 import java.time.Duration;
@@ -36,6 +37,9 @@ class TransferRequestTest {
 
     @BeforeEach
     void clearAll() {
+        // 이동에서 생긴 입고 문서가 이동을 가리키므로(외래 키) 입고부터 지운다
+        jdbcClient.sql("DELETE FROM inbound_item").update();
+        jdbcClient.sql("DELETE FROM inbound").update();
         jdbcClient.sql("DELETE FROM transfer_item").update();
         jdbcClient.sql("DELETE FROM transfer").update();
         inventoryStub.resetAll();
@@ -98,6 +102,29 @@ class TransferRequestTest {
         assertThatThrownBy(() -> transferService.request("DC", "DC", List.of(new TransferLine(1, 3))))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("같은 거점으로는 이동할 수 없습니다");
+        assertThat(transferCount()).isZero();
+        inventoryStub.verify(0, postRequestedFor(urlEqualTo("/reservations")));
+    }
+
+    @Test
+    @DisplayName("같은 상품을 두 줄로 요청하면 받지 않는다")
+    void rejectsDuplicateProduct() {
+        assertThatThrownBy(() -> transferService.request("DC", "STORE",
+            List.of(new TransferLine(1, 2), new TransferLine(1, 3))))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("같은 상품이 두 줄로 들어 있습니다: 상품 1");
+
+        assertThat(transferCount()).isZero();
+        inventoryStub.verify(0, postRequestedFor(urlEqualTo("/reservations")));
+    }
+
+    @Test
+    @DisplayName("품목을 저장하다 실패하면 이동을 남기지 않는다")
+    void leavesNothingWhenItemInsertFails() {
+        assertThatThrownBy(() -> transferService.request("DC", "STORE",
+            List.of(new TransferLine(1, 3), new TransferLine(2, 0))))
+            .isInstanceOf(DataAccessException.class);
+
         assertThat(transferCount()).isZero();
         inventoryStub.verify(0, postRequestedFor(urlEqualTo("/reservations")));
     }

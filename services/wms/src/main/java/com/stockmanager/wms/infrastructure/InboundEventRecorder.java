@@ -3,6 +3,8 @@ package com.stockmanager.wms.infrastructure;
 import com.stockmanager.common.event.InboundInspected;
 import com.stockmanager.common.event.InboundStored;
 import com.stockmanager.common.messaging.OutboxRepository;
+import com.stockmanager.wms.domain.Inbound;
+import com.stockmanager.wms.domain.InboundOrigin;
 import com.stockmanager.wms.domain.InspectionLine;
 import com.stockmanager.wms.domain.PutawayLine;
 import org.springframework.stereotype.Component;
@@ -21,7 +23,7 @@ public class InboundEventRecorder {
         this.outboxRepository = outboxRepository;
     }
 
-    public void inboundInspected(long inboundId, String locationCode, List<InspectionLine> results) {
+    public void inboundInspected(long inboundId,String locationCode, List<InspectionLine> results) {
         List<InboundInspected.Item> items = results.stream()
             .map(result -> new InboundInspected.Item(
                 result.productId(), result.goodQuantity(), result.defectiveQuantity()))
@@ -31,12 +33,16 @@ public class InboundEventRecorder {
         outboxRepository.append(TOPIC, String.valueOf(inboundId), event);
     }
 
-    public void inboundStored(long inboundId, String locationCode, List<PutawayLine> lines) {
+    public void inboundStored(Inbound inbound, List<PutawayLine> lines) {
         List<InboundStored.Item> items = lines.stream()
             .map(line -> new InboundStored.Item(line.productId(), line.quantity()))
             .toList();
         InboundStored event = new InboundStored(
-            UUID.randomUUID().toString(), inboundId, locationCode, items, Instant.now());
-        outboxRepository.append(TOPIC, String.valueOf(inboundId), event);
+            UUID.randomUUID().toString(), inbound.id(), inbound.locationCode(), items, Instant.now());
+        switch (inbound.origin()) {
+            case InboundOrigin.Supplier() -> outboxRepository.append(TOPIC, String.valueOf(inbound.id()), event);
+            case InboundOrigin.Transfer(long transferId) ->
+                outboxRepository.append(TransferEventRecorder.TOPIC, String.valueOf(transferId), event);
+        }
     }
 }

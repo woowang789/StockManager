@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -44,6 +45,17 @@ public class StockMovementRepository {
             .param("idempotencyKey", idempotencyKey)
             .query(Long.class)
             .optional();
+    }
+
+    public List<StockChange> findChanges(String idempotencyKey) {
+        return jdbcClient.sql("""
+                    SELECT e.location_code, e.product_id, e.state, e.delta
+                    FROM stock_entry e JOIN stock_movement m ON m.id = e.movement_id
+                    WHERE m.idempotency_key = :idempotencyKey
+                """)
+            .param("idempotencyKey", idempotencyKey)
+            .query(StockChange.class)
+            .list();
     }
 
     public void insertEntry(long movementId, StockChange change, int balanceAfter) {

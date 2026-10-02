@@ -81,7 +81,8 @@ class InboundController {
         }
 
         static InboundResponse from(Inbound inbound) {
-            return new InboundResponse(inbound.id(), inbound.locationCode(), inbound.transferId(), inbound.status().name(),
+            return new InboundResponse(inbound.id(), inbound.locationCode(), inbound.origin().transferIdOrNull(),
+                inbound.status().name(),
                 inbound.lines().stream()
                     .map(line -> new Item(line.productId(), line.expectedQuantity(),
                         line.goodQuantity(), line.defectiveQuantity()))

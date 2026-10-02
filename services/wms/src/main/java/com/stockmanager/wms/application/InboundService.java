@@ -3,6 +3,7 @@ package com.stockmanager.wms.application;
 import com.stockmanager.common.web.ConcurrentUpdateException;
 import com.stockmanager.wms.domain.Inbound;
 import com.stockmanager.wms.domain.InboundLine;
+import com.stockmanager.wms.domain.InboundOrigin;
 import com.stockmanager.wms.domain.InboundStatus;
 import com.stockmanager.wms.domain.InspectionLine;
 import com.stockmanager.wms.domain.PutawayLine;
@@ -13,6 +14,7 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -27,29 +29,35 @@ public class InboundService {
 
     private final InboundRepository inboundRepository;
     private final ProductBinRepository productBinRepository;
+    private final TransferService transferService;
     private final InboundEventRecorder inboundEventRecorder;
     private final TransactionTemplate transactionTemplate;
 
-    InboundService(InboundRepository inboundRepository,ProductBinRepository productBinRepository,InboundEventRecorder inboundEventRecorder, TransactionTemplate transactionTemplate) {
+    InboundService(InboundRepository inboundRepository,ProductBinRepository productBinRepository,
+                   TransferService transferService, InboundEventRecorder inboundEventRecorder, TransactionTemplate transactionTemplate) {
         this.inboundRepository = inboundRepository;
         this.productBinRepository = productBinRepository;
+        this.transferService = transferService;
         this.inboundEventRecorder = inboundEventRecorder;
         this.transactionTemplate = transactionTemplate;
     }
 
     public Inbound arrive(String locationCode, List<InboundLine> lines) {
-        long inboundId = inboundRepository.insert(locationCode, null, lines);
-        return inboundRepository.find(inboundId).orElseThrow();
-    }
-
-    public long arriveFromTransfer(long transferId, String locationCode, List<InboundLine> lines) {
-        return inboundRepository.insert(locationCode, transferId, lines);
+        requireDistinctProducts(lines.stream().map(InboundLine::productId).toList());
+        return transactionTemplate.execute(status -> {
+            long inboundId = inboundRepository.insert(locationCode, new InboundOrigin.Supplier(), lines);
+            return inboundRepository.find(inboundId).orElseThrow();
+        });
     }
 
     public Inbound inspect(long inboundId, List<InspectionLine> results) {
+        requireDistinctProducts(results.stream().map(InspectionLine::productId).toList());
         return transactionTemplate.execute(status -> {
             Inbound inbound = find(inboundId);
             requireAllItems(inbound, results);
+            if (inbound.origin() instanceof InboundOrigin.Transfer) {
+                requireNoMoreThanSent(inbound, results);
+            }
             InboundStatus to = STORE.equals(inbound.locationCode())
                 ? InboundStatus.STORED
                 : InboundStatus.INSPECTED;
@@ -59,7 +67,11 @@ public class InboundService {
                     "검수할 수 없는 상태입니다: " + inboundId + " (" + inbound.status() + ")");
             }
             inboundRepository.recordInspection(inboundId, results);
-            inboundEventRecorder.inboundInspected(inboundId, inbound.locationCode(), results);
+            switch (inbound.origin()) {
+                case InboundOrigin.Supplier() ->
+                    inboundEventRecorder.inboundInspected(inboundId, inbound.locationCode(), results);
+                case InboundOrigin.Transfer(long transferId) -> transferService.receive(transferId, results);
+            }
             return inboundRepository.find(inboundId).orElseThrow();
         });
     }
@@ -89,7 +101,7 @@ public class InboundService {
                 throw new ConcurrentUpdateException(
                     "적치하는 사이에 상태가 바뀌었습니다. 다시 시도해 주세요: " + inboundId);
             }
-            inboundEventRecorder.inboundStored(inboundId, inbound.locationCode(), guided);
+            inboundEventRecorder.inboundStored(inbound, guided);
             return inboundRepository.find(inboundId).orElseThrow();
         });
     }
@@ -116,6 +128,28 @@ public class InboundService {
             throw new IllegalArgumentException(
                 "칸이 지정되지 않은 상품이 있습니다: " + inboundId + ", 상품 " + missing
             );
+        }
+    }
+
+    private void requireNoMoreThanSent(Inbound inbound, List<InspectionLine> results) {
+        Map<Long, Integer> sent = inbound.lines().stream()
+            .collect(Collectors.toMap(InboundLine::productId, InboundLine::expectedQuantity));
+        results.forEach(result -> {
+            int counted = result.goodQuantity() + result.defectiveQuantity();
+            if (counted > sent.get(result.productId())) {
+                throw new IllegalArgumentException("이동 입고는 보낸 수량보다 많이 받을 수 없습니다: "
+                    + inbound.id() + ", 상품 " + result.productId()
+                    + " (보냄 " + sent.get(result.productId()) + ", 검수 " + counted + ")");
+            }
+        });
+    }
+
+    private void requireDistinctProducts(List<Long> productIds) {
+        Set<Long> seen = new HashSet<>();
+        for (long productId : productIds) {
+            if (!seen.add(productId)) {
+                throw new IllegalArgumentException("같은 상품이 두 줄로 들어 있습니다: 상품 " + productId);
+            }
         }
     }
 
