@@ -1,10 +1,12 @@
 package com.stockmanager.wms.infrastructure;
 
+import com.stockmanager.common.event.TransferCanceled;
 import com.stockmanager.common.event.TransferDispatched;
 import com.stockmanager.common.event.TransferReceived;
 import com.stockmanager.common.messaging.OutboxRepository;
 import com.stockmanager.wms.domain.InspectionLine;
 import com.stockmanager.wms.domain.Transfer;
+import com.stockmanager.wms.domain.TransferLine;
 import org.springframework.stereotype.Component;
 import java.time.Instant;
 import java.util.List;
@@ -38,5 +40,17 @@ public class TransferEventRecorder {
         TransferReceived event = new TransferReceived(UUID.randomUUID().toString(), transfer.id(),
             transfer.toLocationCode(), items, Instant.now());
         outboxRepository.append(TOPIC, String.valueOf(transfer.id()), event);
+    }
+
+    public void transferCanceled(Transfer transfer, List<TransferLine> shortages, boolean picked) {
+        TransferCanceled event = new TransferCanceled(UUID.randomUUID().toString(), transfer.id(),
+            transfer.fromLocationCode(), toItems(transfer.lines()), toItems(shortages), picked, Instant.now());
+        outboxRepository.append(TOPIC, String.valueOf(transfer.id()), event);
+    }
+
+    private List<TransferCanceled.Item> toItems(List<TransferLine> lines) {
+        return lines.stream()
+            .map(line -> new TransferCanceled.Item(line.productId(), line.quantity()))
+            .toList();
     }
 }

@@ -1,5 +1,6 @@
 package com.stockmanager.inventory.application;
 
+import com.stockmanager.common.event.TransferCanceled;
 import com.stockmanager.common.event.TransferDispatched;
 import com.stockmanager.common.event.TransferReceived;
 import com.stockmanager.inventory.domain.AdjustmentReason;
@@ -79,6 +80,30 @@ public class TransferService {
         }
     }
 
+    public void release(TransferCanceled event) {
+        StockMovementCommand movement = toMovement(event);
+        if (stockMovementRepository.findIdByIdempotencyKey(movement.idempotencyKey()).isPresent()) {
+            log.info("이미 반영한 취소입니다: {}", movement.idempotencyKey());
+            return;
+        }
+        try {
+            transactionTemplate.executeWithoutResult(status -> {
+                reservationRepository.release(REF_TYPE, String.valueOf(event.transferId()));
+                stockMover.move(movement, event.occurredAt());
+                if (!event.shortages().isEmpty()) {
+                    stockMover.move(toShortageMovement(event), event.occurredAt());
+                }
+            });
+
+        } catch (DuplicateKeyException exception) {
+            if (stockMovementRepository.findIdByIdempotencyKey(movement.idempotencyKey()).isEmpty()) {
+                throw exception;
+            }
+            log.info("이미 반영한 취소힙니다: {}", movement.idempotencyKey());
+        }
+    }
+
+
     private StockMovementCommand toMovement(TransferReceived event) {
         StockState goodState = StockState.forReceivedGoods(event.toLocationCode());
         List<StockChange> changes = new ArrayList<>();
@@ -134,5 +159,31 @@ public class TransferService {
         });
         return new StockMovementCommand(MovementType.DISPATCH, REF_TYPE, String.valueOf(event.transferId()),
             null, "wms", changes);
+    }
+
+    private StockMovementCommand toMovement(TransferCanceled event) {
+        StockState returnTo = returnTo(event);
+        List<StockChange> changes = new ArrayList<>();
+        event.items().forEach(item -> {
+            changes.add(new StockChange(
+                event.fromLocationCode(), item.productId(), StockState.RESERVED, -item.quantity()));
+            changes.add(new StockChange(event.fromLocationCode(), item.productId(), returnTo, item.quantity()));
+        });
+        return new StockMovementCommand(MovementType.RELEASE, REF_TYPE, String.valueOf(event.transferId()),
+            null, "wms", changes);
+    }
+
+    private StockMovementCommand toShortageMovement(TransferCanceled event) {
+        StockState from = returnTo(event);
+        List<StockChange> changes = event.shortages().stream()
+            .map(shortage -> new StockChange(
+                event.fromLocationCode(), shortage.productId(), from, -shortage.quantity()))
+            .toList();
+        return new StockMovementCommand(MovementType.ADJUST, REF_TYPE, String.valueOf(event.transferId()),
+            AdjustmentReason.SHORTAGE.name(), "wms", changes);
+    }
+
+    private StockState returnTo(TransferCanceled event) {
+        return event.picked() ? StockState.forReceivedGoods(event.fromLocationCode()) : StockState.AVAILABLE;
     }
 }

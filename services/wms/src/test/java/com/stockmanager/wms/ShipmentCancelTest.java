@@ -148,14 +148,17 @@ class ShipmentCancelTest {
     }
 
     @Test
-    @DisplayName("같은 상품을 나눠 세면 합쳐서 한 줄로 싣는다")
-    void mergesShortagesOfSameProduct() {
+    @DisplayName("같은 상품을 두 줄로 보고하면 받지 않는다")
+    void rejectsDuplicateShortage() {
         shipmentRepository.insert("ORD-9", "DC", List.of(new ShipmentLine(1, 3)));
         shipmentService.pick("ORD-9");
 
-        shipmentService.cancelForShortage("ORD-9", List.of(new ShipmentLine(1, 1), new ShipmentLine(1, 2)));
-
-        assertThat(canceledEventOf("ORD-9").shortages()).containsExactly(new ShipmentCanceled.Item(1, 3));
+        assertThatThrownBy(() -> shipmentService.cancelForShortage("ORD-9",
+            List.of(new ShipmentLine(1, 1), new ShipmentLine(1, 2))))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("같은 상품이 두 줄로 들어 있습니다: 상품 1");
+        assertThat(statusOf("ORD-9")).isEqualTo("PICKED");
+        assertThat(canceledPayloadOf("ORD-9")).isEmpty();
     }
 
     @Test

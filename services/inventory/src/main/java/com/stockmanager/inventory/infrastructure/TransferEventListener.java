@@ -2,6 +2,7 @@ package com.stockmanager.inventory.infrastructure;
 
 import com.stockmanager.common.event.EventHeaders;
 import com.stockmanager.common.event.InboundStored;
+import com.stockmanager.common.event.TransferCanceled;
 import com.stockmanager.common.event.TransferDispatched;
 import com.stockmanager.common.event.TransferReceived;
 import com.stockmanager.inventory.application.InboundService;
@@ -19,6 +20,7 @@ class TransferEventListener {
 
     private static final String TRANSFER_DISPATCHED = TransferDispatched.class.getSimpleName();
     private static final String TRANSFER_RECEIVED = TransferReceived.class.getSimpleName();
+    private static final String TRANSFER_CANCELED = TransferCanceled.class.getSimpleName();
     private static final String INBOUND_STORED = InboundStored.class.getSimpleName();
 
     private static final Logger log = LoggerFactory.getLogger(TransferEventListener.class);
@@ -41,6 +43,10 @@ class TransferEventListener {
         }
         if (TRANSFER_RECEIVED.equals(eventType)) {
             transferService.receive(objectMapper.readValue(payload, TransferReceived.class));
+            return;
+        }
+        if (TRANSFER_CANCELED.equals(eventType)) {
+            transferService.release(objectMapper.readValue(payload, TransferCanceled.class));
             return;
         }
         if (INBOUND_STORED.equals(eventType)) {

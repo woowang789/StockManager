@@ -4,6 +4,7 @@ import com.stockmanager.common.event.OrderCancelRequested;
 import com.stockmanager.common.event.OrderReserved;
 import com.stockmanager.common.messaging.ProcessedEventRepository;
 import com.stockmanager.common.web.ConcurrentUpdateException;
+import com.stockmanager.wms.domain.ProductLines;
 import com.stockmanager.wms.domain.Shipment;
 import com.stockmanager.wms.domain.ShipmentLine;
 import com.stockmanager.wms.domain.ShipmentStatus;
@@ -14,7 +15,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -74,35 +74,31 @@ public class ShipmentService {
                 throw new IllegalArgumentException(
                     "취소할 수 없는 상태입니다: " + orderNo + " (" + shipment.status() + ")");
             }
-            List<ShipmentLine> reported = toReportedShortages(shipment, shortages);
+            requireShortagesWithin(shipment, shortages);
             boolean picked = shipment.status() != ShipmentStatus.READY;
             cancelOrFail(orderNo, shipment.status());
             shipmentEventRecorder.shipmentCanceled(
-                orderNo, shipment.locationCode(), shipment.lines(), reported, picked);
+                orderNo, shipment.locationCode(), shipment.lines(), shortages, picked);
             return shipmentRepository.find(orderNo).orElseThrow();
         });
     }
 
-    private List<ShipmentLine> toReportedShortages(Shipment shipment, List<ShipmentLine> shortages) {
+    private void requireShortagesWithin(Shipment shipment, List<ShipmentLine> shortages) {
+        ProductLines.requireDistinct(shortages, ShipmentLine::productId);
         Map<Long, Integer> shipping = shipment.lines().stream()
             .collect(Collectors.toMap(ShipmentLine::productId, ShipmentLine::quantity));
-        Map<Long, Integer> reported = new LinkedHashMap<>();
-        shortages.forEach(shortage -> reported.merge(shortage.productId(), shortage.quantity(), Integer::sum));
-        reported.forEach((productId, quantity) -> {
-            Integer ordered = shipping.get(productId);
+        shortages.forEach(shortage -> {
+            Integer ordered = shipping.get(shortage.productId());
             if (ordered == null) {
                 throw new IllegalArgumentException("출하에 없는 상품은 결품으로 보고할 수 없습니다: "
-                    + shipment.orderNo() + ", 상품 " + productId + " (출하 품목 " + shipping.keySet() + ")");
+                    + shipment.orderNo() + ", 상품 " + shortage.productId()  + " (출하 품목 " + shipping.keySet() + ")");
             }
-            if (quantity > ordered) {
+            if (shortage.quantity() > ordered) {
                 throw new IllegalArgumentException("결품이 출하 수량보다 많습니다: "
-                    + shipment.orderNo() + ", 상품 " + productId
-                    + " (결품 " + quantity + ", 출하 " + ordered + ")");
+                    + shipment.orderNo() + ", 상품 " + shortage.productId()
+                    + " (결품 " + shortage.quantity() + ", 출하 " + ordered + ")");
             }
         });
-        return reported.entrySet().stream()
-            .map(entry -> new ShipmentLine(entry.getKey(), entry.getValue()))
-            .toList();
     }
 
     private void cancelOrFail(String orderNo, ShipmentStatus from) {

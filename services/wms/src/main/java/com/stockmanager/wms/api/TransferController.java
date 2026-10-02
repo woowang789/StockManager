@@ -44,6 +44,19 @@ class TransferController {
         return TransferResponse.from(transferService.dispatch(transferId));
     }
 
+    @PostMapping("/transfers/{transferId}/cancel")
+    TransferResponse cancel(@PathVariable long transferId) {
+        return TransferResponse.from(transferService.cancel(transferId));
+    }
+
+    @PostMapping("/transfers/{transferId}/shortage")
+    TransferResponse cancelForShortage(@PathVariable long transferId, @Valid @RequestBody TransferController.ShortageRequest request) {
+        List<TransferLine> shortages = request.items().stream()
+            .map(item -> new TransferLine(item.productId(), item.quantity()))
+            .toList();
+        return TransferResponse.from(transferService.cancelForShortage(transferId, shortages));
+    }
+
     @GetMapping("/transfers/{transferId}")
     TransferResponse find(@PathVariable long transferId) {
         return TransferResponse.from(transferService.find(transferId));
@@ -54,6 +67,12 @@ class TransferController {
         record Item(@NotNull Long productId, @NotNull @Positive Integer quantity) {
         }
     }
+
+    record ShortageRequest(@NotEmpty @Valid List<Item> items) {
+        record Item(@NotNull Long productId, @NotNull @Positive Integer quantity) {
+        }
+    }
+
 
     record TransferResponse(long transferId, String fromLocationCode, String toLocationCode,String status,
                             List<Item> items){

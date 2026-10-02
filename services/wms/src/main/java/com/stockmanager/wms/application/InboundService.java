@@ -6,6 +6,7 @@ import com.stockmanager.wms.domain.InboundLine;
 import com.stockmanager.wms.domain.InboundOrigin;
 import com.stockmanager.wms.domain.InboundStatus;
 import com.stockmanager.wms.domain.InspectionLine;
+import com.stockmanager.wms.domain.ProductLines;
 import com.stockmanager.wms.domain.PutawayLine;
 import com.stockmanager.wms.infrastructure.InboundEventRecorder;
 import com.stockmanager.wms.infrastructure.InboundRepository;
@@ -43,7 +44,7 @@ public class InboundService {
     }
 
     public Inbound arrive(String locationCode, List<InboundLine> lines) {
-        requireDistinctProducts(lines.stream().map(InboundLine::productId).toList());
+        ProductLines.requireDistinct(lines, InboundLine::productId);
         return transactionTemplate.execute(status -> {
             long inboundId = inboundRepository.insert(locationCode, new InboundOrigin.Supplier(), lines);
             return inboundRepository.find(inboundId).orElseThrow();
@@ -51,7 +52,7 @@ public class InboundService {
     }
 
     public Inbound inspect(long inboundId, List<InspectionLine> results) {
-        requireDistinctProducts(results.stream().map(InspectionLine::productId).toList());
+        ProductLines.requireDistinct(results, InspectionLine::productId);
         return transactionTemplate.execute(status -> {
             Inbound inbound = find(inboundId);
             requireAllItems(inbound, results);
@@ -142,15 +143,6 @@ public class InboundService {
                     + " (보냄 " + sent.get(result.productId()) + ", 검수 " + counted + ")");
             }
         });
-    }
-
-    private void requireDistinctProducts(List<Long> productIds) {
-        Set<Long> seen = new HashSet<>();
-        for (long productId : productIds) {
-            if (!seen.add(productId)) {
-                throw new IllegalArgumentException("같은 상품이 두 줄로 들어 있습니다: 상품 " + productId);
-            }
-        }
     }
 
     private void requireAllItems(Inbound inbound, List<InspectionLine> results) {

@@ -1,8 +1,10 @@
 package com.stockmanager.wms.application;
 
+import com.stockmanager.common.web.ConcurrentUpdateException;
 import com.stockmanager.wms.domain.InboundLine;
 import com.stockmanager.wms.domain.InboundOrigin;
 import com.stockmanager.wms.domain.InspectionLine;
+import com.stockmanager.wms.domain.ProductLines;
 import com.stockmanager.wms.domain.Transfer;
 import com.stockmanager.wms.domain.TransferLine;
 import com.stockmanager.wms.domain.TransferStatus;
@@ -19,8 +21,10 @@ import org.springframework.web.client.RestClientException;
 import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class TransferService {
@@ -49,7 +53,7 @@ public class TransferService {
         if (fromLocationCode.equals(toLocationCode)) {
             throw new IllegalArgumentException("같은 거점으로는 이동할 수 없습니다: " + fromLocationCode);
         }
-        requireDistinctProducts(lines.stream().map(TransferLine::productId).toList());
+        ProductLines.requireDistinct(lines, TransferLine::productId);
         long transferId = transactionTemplate.execute(
             status -> transferRepository.insert(fromLocationCode, toLocationCode, lines));
         return reserve(find(transferId));
@@ -84,12 +88,61 @@ public class TransferService {
         });
     }
 
+    public Transfer cancelForShortage(long transferId, List<TransferLine> shortages) {
+        return transactionTemplate.execute(status -> {
+            Transfer transfer = find(transferId);
+            requireShortagesWithin(transfer, shortages);
+            cancelOrFail(transfer, shortages);
+            return find(transferId);
+        });
+    }
+
+    private void requireShortagesWithin(Transfer transfer, List<TransferLine> shortages) {
+        ProductLines.requireDistinct(shortages, TransferLine::productId);
+        Map<Long, Integer> moving = transfer.lines().stream()
+            .collect(Collectors.toMap(TransferLine::productId, TransferLine::quantity));
+        shortages.forEach(shortage -> {
+            Integer quantity = moving.get(shortage.productId());
+            if (quantity == null) {
+                throw new IllegalArgumentException("이동에 없는 상품은 결품으로 보고할 수 없습니다: "
+                    + transfer.id() + ", 상품 " + shortage.productId() + " (이동 품목 " + moving.keySet() + ")");
+            }
+            if (shortage.quantity() > quantity) {
+                throw new IllegalArgumentException("결품이 이동 수량보다 많습니다: "
+                    + transfer.id() + ", 상품 " + shortage.productId()
+                    + " (결품 " + shortage.quantity() + ", 이동 " + quantity + ")");
+            }
+        });
+    }
+
     public void receive(long transferId, List<InspectionLine> results) {
         if (transferRepository.changeStatus(transferId, TransferStatus.IN_TRANSIT, TransferStatus.RECEIVED) == 0) {
             throw new IllegalStateException("이동 중이 아닌 이동의 입고 문서입니다: " + transferId);
         }
         transferEventRecorder.transferReceived(find(transferId), results);
+    }
 
+    public Transfer cancel(long transferId) {
+        return transactionTemplate.execute(status -> {
+            Transfer transfer = find(transferId);
+            if (transfer.status() == TransferStatus.CANCELED) {
+                return transfer;
+            }
+            cancelOrFail(transfer, List.of());
+            return find(transferId);
+        });
+    }
+
+    private void cancelOrFail(Transfer transfer, List<TransferLine> shortages) {
+        TransferStatus from = transfer.status();
+        if (from != TransferStatus.REQUESTED && from != TransferStatus.PICKED) {
+            throw new IllegalArgumentException("취소할 수 없는 상태입니다: " + transfer.id() + " (" + from + ")");
+        }
+        if (transferRepository.changeStatus(transfer.id(), from, TransferStatus.CANCELED) == 0) {
+            throw new ConcurrentUpdateException(
+                "취소하는 사이에 상태가 바뀌었습니다. 다시 시도해 주세요: " + transfer.id() + " (" + from + ")");
+        }
+        transferEventRecorder.transferCanceled(transfer, shortages, from == TransferStatus.PICKED);
     }
 
     private Transfer advance(long transferId, TransferStatus from, TransferStatus to) {
@@ -113,15 +166,6 @@ public class TransferService {
     public Transfer find(long transferId) {
         return transferRepository.find(transferId)
             .orElseThrow(() -> new IllegalArgumentException("이동 요청이 없습니다: " + transferId));
-    }
-
-    private void requireDistinctProducts(List<Long> productIds) {
-        Set<Long> seen = new HashSet<>();
-        for (long productId : productIds) {
-            if (!seen.add(productId)) {
-                throw new IllegalArgumentException("같은 상품이 두 줄로 들어 있습니다: 상품 " + productId);
-            }
-        }
     }
 
     private Transfer reserve(Transfer transfer) {
