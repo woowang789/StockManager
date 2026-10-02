@@ -1,5 +1,6 @@
 package com.stockmanager.wms;
 
+import com.stockmanager.common.event.InboundInspected;
 import com.stockmanager.wms.application.InboundService;
 import com.stockmanager.wms.domain.Inbound;
 import com.stockmanager.wms.domain.InboundLine;
@@ -13,6 +14,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import tools.jackson.databind.ObjectMapper;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -27,6 +29,9 @@ class InboundInspectTest {
 
     @Autowired
     JdbcClient jdbcClient;
+
+    @Autowired
+    ObjectMapper objectMapper;
 
     @BeforeEach
     void clearAll() {
@@ -66,7 +71,7 @@ class InboundInspectTest {
     }
 
     @Test
-    @DisplayName("센터에서 검수하면 INSPECTED가 되고 InboundInspected가 남는다")
+    @DisplayName("센터에서 검수하면 INSPECTED가 되고 적치가 남았다고 알린다")
     void inspectsAtCenter() {
         long inboundId = inboundService.arrive("DC", List.of(InboundLine.expected(1, 10))).id();
 
@@ -76,16 +81,18 @@ class InboundInspectTest {
         assertThat(inspected.lines()).containsExactly(new InboundLine(1, 10, 9, 1));
         assertThat(outboxCount(inboundId)).isEqualTo(1);
         assertThat(eventTypeOf(inboundId)).isEqualTo("InboundInspected");
+        assertThat(inspectedEventOf(inboundId).putawayPending()).isTrue();
     }
 
     @Test
-    @DisplayName("매장에서 검수하면 적치 단계 없이 STORED로 끝난다")
+    @DisplayName("매장에서 검수하면 끝나고 적치가 남지 않았다고 알린다")
     void inspectsAtStore() {
         long inboundId = inboundService.arrive("STORE", List.of(InboundLine.expected(1, 5))).id();
 
         assertThat(inboundService.inspect(inboundId, List.of(new InspectionLine(1, 5, 0))).status())
             .isEqualTo(InboundStatus.STORED);
         assertThat(outboxCount(inboundId)).isEqualTo(1);
+        assertThat(inspectedEventOf(inboundId).putawayPending()).isFalse();
     }
 
     @Test
@@ -152,6 +159,14 @@ class InboundInspectTest {
             .param("messageKey", String.valueOf(inboundId))
             .query(Integer.class)
             .single();
+    }
+
+    private InboundInspected inspectedEventOf(long inboundId) {
+        String payload = jdbcClient.sql("SELECT payload FROM outbox WHERE message_key = :messageKey")
+            .param("messageKey", String.valueOf(inboundId))
+            .query(String.class)
+            .single();
+        return objectMapper.readValue(payload, InboundInspected.class);
     }
 
     private String eventTypeOf(long inboundId) {

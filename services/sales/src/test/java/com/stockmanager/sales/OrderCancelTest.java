@@ -123,7 +123,7 @@ class OrderCancelTest {
     private void publishCanceled(String eventId, String orderNo) {
         String payload = """
                 {"eventId":"%s","orderNo":"%s","locationCode":"DC","items":[{"productId":1,"quantity":3}],
-                 "shortages":[],"picked":false,"occurredAt":"2026-09-26T00:00:00Z"}
+                 "shortages":[],"putawayPending":false,"occurredAt":"2026-09-26T00:00:00Z"}
                 """.formatted(eventId, orderNo);
         kafkaTemplate.send(new ProducerRecord<>("wms.shipment", null, orderNo, payload,
                 List.of(new RecordHeader(EventHeaders.EVENT_TYPE,

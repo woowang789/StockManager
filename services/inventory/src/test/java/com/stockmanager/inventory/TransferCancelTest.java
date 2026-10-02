@@ -65,19 +65,7 @@ class TransferCancelTest {
     }
 
     @Test
-    @DisplayName("매장에서 피킹한 뒤 취소하면 칸이 없어 바로 가용으로 돌아간다")
-    void releasesToAvailableAfterPickAtStore() {
-        reserved(903, "STORE", 3);
-
-        publishCanceled(903, "STORE", 3, true, "");
-
-        assertThat(waitForMovement(903, "RELEASE")).isEqualTo(1);
-        assertThat(quantityOf("STORE", 1, "available")).isEqualTo(3);
-        assertThat(quantityOf("STORE", 1, "putaway_wait")).isZero();
-    }
-
-    @Test
-    @DisplayName("결품은 되돌린 자리에서 조정으로 뺸다")
+    @DisplayName("결품은 되돌린 자리에서 조정으로 뺀다")
     void adjustsShortageWhereReleased() {
         reserved(904, "DC", 3);
 
@@ -125,13 +113,13 @@ class TransferCancelTest {
             .update();
     }
 
-    private void publishCanceled(long transferId, String fromLocationCode, int quantity, boolean picked,
+    private void publishCanceled(long transferId, String fromLocationCode, int quantity, boolean putawayPending,
                                  String shortages) {
         String payload = """
                 {"eventId":"cancel-%d","transferId":%d,"fromLocationCode":"%s",
-                 "items":[{"productId":1,"quantity":%d}],"shortages":[%s],"picked":%b,
+                 "items":[{"productId":1,"quantity":%d}],"shortages":[%s],"putawayPending":%b,
                  "occurredAt":"2026-10-02T00:00:00Z"}
-                """.formatted(transferId, transferId, fromLocationCode, quantity, shortages, picked);
+                """.formatted(transferId, transferId, fromLocationCode, quantity, shortages, putawayPending);
         kafkaTemplate.send(new ProducerRecord<>(TOPIC, null, String.valueOf(transferId), payload,
                 List.of(new RecordHeader(EventHeaders.EVENT_TYPE,
                     "TransferCanceled".getBytes(StandardCharsets.UTF_8)))))

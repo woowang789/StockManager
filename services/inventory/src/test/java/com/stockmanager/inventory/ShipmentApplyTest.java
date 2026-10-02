@@ -81,7 +81,7 @@ class ShipmentApplyTest {
     @DisplayName("아직 다루지 않는 이벤트는 건너뛴다")
     void skipsUnknownEventType() {
         givenReservedOrder("ORD-4", 10, 3);
-        publish("ShipmentCanceled", "evt-4", "ORD-4", 3);
+        publish("ShipmentDelayed", "evt-4", "ORD-4", 3);
 
         sleep(Duration.ofSeconds(3));
         assertThat(shipMovementCount("ORD-4")).isZero();

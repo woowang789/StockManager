@@ -30,9 +30,9 @@ public class ShipmentEventRecorder {
     }
 
     public void shipmentCanceled(String orderNo, String locationCode, List<ShipmentLine> lines,
-                                 List<ShipmentLine> shortages, boolean picked) {
-        ShipmentCanceled event = new ShipmentCanceled(
-            UUID.randomUUID().toString(), orderNo, locationCode, toItems(lines), toItems(shortages), picked, Instant.now());
+                                 List<ShipmentLine> shortages, boolean putawayPending) {
+        ShipmentCanceled event = new ShipmentCanceled(UUID.randomUUID().toString(), orderNo, locationCode,
+            toItems(lines), toItems(shortages), putawayPending, Instant.now());
         outboxRepository.append(TOPIC, orderNo, event);
     }
 

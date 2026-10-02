@@ -32,19 +32,19 @@ public class TransferEventRecorder {
         outboxRepository.append(TOPIC, String.valueOf(transfer.id()), event);
     }
 
-    public void transferReceived(Transfer transfer, List<InspectionLine> results) {
+    public void transferReceived(Transfer transfer, List<InspectionLine> results, boolean putawayPending) {
         List<TransferReceived.Item> items = results.stream()
             .map(result -> new TransferReceived.Item(
                 result.productId(), result.goodQuantity(), result.defectiveQuantity()))
             .toList();
         TransferReceived event = new TransferReceived(UUID.randomUUID().toString(), transfer.id(),
-            transfer.toLocationCode(), items, Instant.now());
+            transfer.toLocationCode(), items, putawayPending, Instant.now());
         outboxRepository.append(TOPIC, String.valueOf(transfer.id()), event);
     }
 
-    public void transferCanceled(Transfer transfer, List<TransferLine> shortages, boolean picked) {
+    public void transferCanceled(Transfer transfer, List<TransferLine> shortages, boolean putawayPending) {
         TransferCanceled event = new TransferCanceled(UUID.randomUUID().toString(), transfer.id(),
-            transfer.fromLocationCode(), toItems(transfer.lines()), toItems(shortages), picked, Instant.now());
+            transfer.fromLocationCode(), toItems(transfer.lines()), toItems(shortages), putawayPending, Instant.now());
         outboxRepository.append(TOPIC, String.valueOf(transfer.id()), event);
     }
 

@@ -59,7 +59,7 @@ class TransferCancelTest {
     }
 
     @Test
-    @DisplayName("피킹 전에 취소하면 꺼내지 않았다고 알린다")
+    @DisplayName("피킹 전에 취소하면 적치가 남지 않았다고 알린다")
     void cancelsBeforePick() {
         long transferId = requested();
 
@@ -69,18 +69,30 @@ class TransferCancelTest {
         assertThat(event.fromLocationCode()).isEqualTo("DC");
         assertThat(event.items()).containsExactly(new TransferCanceled.Item(1, 3));
         assertThat(event.shortages()).isEmpty();
-        assertThat(event.picked()).isFalse();
+        assertThat(event.putawayPending()).isFalse();
     }
 
     @Test
-    @DisplayName("피킹한 뒤에 취소하면 꺼냈다고 알린다")
+    @DisplayName("센터에서 피킹한 뒤에 취소하면 적치가 남았다고 알린다")
     void cancelsAfterPick() {
         long transferId = requested();
         transferService.pick(transferId);
 
         transferService.cancel(transferId);
 
-        assertThat(canceledEventOf(transferId).picked()).isTrue();
+        assertThat(canceledEventOf(transferId).putawayPending()).isTrue();
+    }
+
+    @Test
+    @DisplayName("매장에서 피킹한 뒤에 취소하면 적치가 남지 않았다고 알린다")
+    void cancelsAfterPickAtStore() {
+        long transferId = transferService.request("STORE", "DC", List.of(new TransferLine(1, 2))).id();
+        transferService.pick(transferId);
+
+        transferService.cancel(transferId);
+
+        assertThat(canceledEventOf(transferId).putawayPending()).isFalse();
+
     }
 
     @Test
@@ -147,7 +159,7 @@ class TransferCancelTest {
         TransferCanceled event = canceledEventOf(transferId);
         assertThat(event.items()).containsExactly(new TransferCanceled.Item(1, 3));
         assertThat(event.shortages()).containsExactly(new TransferCanceled.Item(1, 2));
-        assertThat(event.picked()).isTrue();
+        assertThat(event.putawayPending()).isTrue();
     }
 
     @Test
@@ -190,7 +202,7 @@ class TransferCancelTest {
 
     @Test
     @DisplayName("취소하는 사이에 출발하면 취소 이벤트를 내지 않는다")
-    void doseNotPublishWhenDispatchedUnderneath() {
+    void doesNotPublishWhenDispatchedUnderneath() {
         long transferId = requested();
         transferService.pick(transferId);
 

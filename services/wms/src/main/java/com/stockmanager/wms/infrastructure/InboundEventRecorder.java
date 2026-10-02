@@ -23,13 +23,14 @@ public class InboundEventRecorder {
         this.outboxRepository = outboxRepository;
     }
 
-    public void inboundInspected(long inboundId,String locationCode, List<InspectionLine> results) {
+    public void inboundInspected(long inboundId,String locationCode, List<InspectionLine> results,
+                                 boolean putawayPending) {
         List<InboundInspected.Item> items = results.stream()
             .map(result -> new InboundInspected.Item(
                 result.productId(), result.goodQuantity(), result.defectiveQuantity()))
             .toList();
         InboundInspected event = new InboundInspected(
-            UUID.randomUUID().toString(), inboundId, locationCode, items, Instant.now());
+            UUID.randomUUID().toString(), inboundId, locationCode, items, putawayPending, Instant.now());
         outboxRepository.append(TOPIC, String.valueOf(inboundId), event);
     }
 

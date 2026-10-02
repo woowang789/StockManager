@@ -57,10 +57,10 @@ public class ShipmentService {
                     log.info("이미 운송해서 취소하지 않습니다: {}", event.orderNo());
                     return;
                 }
-                boolean picked = shipment.status() != ShipmentStatus.READY;
+                boolean putawayPending = putawayPendingOnCancel(shipment);
                 cancelOrFail(event.orderNo(), shipment.status());
                 shipmentEventRecorder.shipmentCanceled(
-                    event.orderNo(), shipment.locationCode(), shipment.lines(), List.of(), picked);
+                    event.orderNo(), shipment.locationCode(), shipment.lines(), List.of(), putawayPending);
             });
         } catch (DuplicateKeyException exception) {
             log.info("이미 처리된 이벤트입니다: {} (주문 {})", event.eventId(), event.orderNo());
@@ -75,10 +75,10 @@ public class ShipmentService {
                     "취소할 수 없는 상태입니다: " + orderNo + " (" + shipment.status() + ")");
             }
             requireShortagesWithin(shipment, shortages);
-            boolean picked = shipment.status() != ShipmentStatus.READY;
+            boolean putawayPending = putawayPendingOnCancel(shipment);
             cancelOrFail(orderNo, shipment.status());
             shipmentEventRecorder.shipmentCanceled(
-                orderNo, shipment.locationCode(), shipment.lines(), shortages, picked);
+                orderNo, shipment.locationCode(), shipment.lines(), shortages, putawayPending);
             return shipmentRepository.find(orderNo).orElseThrow();
         });
     }
@@ -99,6 +99,10 @@ public class ShipmentService {
                     + " (결품 " + shortage.quantity() + ", 출하 " + ordered + ")");
             }
         });
+    }
+
+    private boolean putawayPendingOnCancel(Shipment shipment) {
+        return shipment.status() != ShipmentStatus.READY;
     }
 
     private void cancelOrFail(String orderNo, ShipmentStatus from) {

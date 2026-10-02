@@ -71,7 +71,7 @@ public class InboundService {
     }
 
     private StockMovementCommand toMovement(InboundInspected event) {
-        StockState goodState = StockState.forReceivedGoods(event.locationCode());
+        StockState goodState = event.putawayPending() ? StockState.PUTAWAY_WAIT : StockState.AVAILABLE;
         List<StockChange> changes = new ArrayList<>();
         event.items().forEach(item ->{
             if(item.goodQuantity() > 0) {

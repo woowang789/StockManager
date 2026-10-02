@@ -50,7 +50,7 @@ class TransferReceiveTest {
     void releasesInTransitAtStore() {
         dispatched(801, "DC", "STORE", 3);
 
-        publishReceived(801, "STORE", item(1, 3, 0));
+        publishReceived(801, "STORE", false, item(1, 3, 0));
 
         assertThat(waitForMovement(801, "TRANSFER_RECEIVE")).isEqualTo(1);
         assertThat(quantityOf("STORE", 1, "in_transit")).isZero();
@@ -64,7 +64,7 @@ class TransferReceiveTest {
     void adjustsShortfallAsTransitLoss() {
         dispatched(802, "DC", "STORE", 3);
 
-        publishReceived(802, "STORE", item(1, 2, 0));
+        publishReceived(802, "STORE", false, item(1, 2, 0));
 
         assertThat(waitForMovement(802, "ADJUST")).isEqualTo(1);
         assertThat(quantityOf("STORE", 1, "available")).isEqualTo(2);
@@ -80,7 +80,7 @@ class TransferReceiveTest {
     void damagedArrivesAsDefective() {
         dispatched(803, "DC", "STORE", 3);
 
-        publishReceived(803, "STORE", item(1, 2, 1));
+        publishReceived(803, "STORE", false, item(1, 2, 1));
 
         assertThat(waitForMovement(803, "TRANSFER_RECEIVE")).isEqualTo(1);
         assertThat(quantityOf("STORE", 1, "available")).isEqualTo(2);
@@ -95,7 +95,7 @@ class TransferReceiveTest {
     void arrivesAtCenterThenStored() {
         dispatched(804, "STORE", "DC", 3);
 
-        publishReceived(804, "DC", item(1, 3, 0));
+        publishReceived(804, "DC", true, item(1, 3, 0));
         assertThat(waitForMovement(804, "TRANSFER_RECEIVE")).isEqualTo(1);
         assertThat(quantityOf("DC", 1, "putaway_wait")).isEqualTo(3);
 
@@ -110,7 +110,7 @@ class TransferReceiveTest {
     void oneLossMovementForManyProducts() {
         dispatched(805, "DC", "STORE", 3, 5);
 
-        publishReceived(805, "STORE", item(1, 2, 0), item(2, 3, 0));
+        publishReceived(805, "STORE", false, item(1, 2, 0), item(2, 3, 0));
 
         assertThat(waitForMovement(805, "ADJUST")).isEqualTo(1);
         assertThat(entryCountOf(805, "ADJUST")).isEqualTo(2);
@@ -123,8 +123,8 @@ class TransferReceiveTest {
     void receivesOnce() {
         dispatched(806, "DC", "STORE", 3);
 
-        publishReceived(806, "STORE", item(1, 2, 0));
-        publishReceived(806, "STORE", item(1, 2, 0));
+        publishReceived(806, "STORE", false, item(1, 2, 0));
+        publishReceived(806, "STORE", false, item(1, 2, 0));
 
         assertThat(waitForMovement(806, "ADJUST")).isEqualTo(1);
         sleep(Duration.ofSeconds(2));
@@ -139,7 +139,7 @@ class TransferReceiveTest {
         reserved(807, "DC", 3);
 
         publishDispatched(807, "DC", "STORE", 3);
-        publishReceived(807, "STORE", item(1, 3, 0));
+        publishReceived(807, "STORE", false, item(1, 3, 0));
 
         assertThat(waitForMovement(807, "TRANSFER_RECEIVE")).isEqualTo(1);
         assertThat(quantityOf("DC", 1, "reserved")).isZero();
@@ -151,12 +151,25 @@ class TransferReceiveTest {
     @DisplayName("상품이동이 반영되지 않은 도착 검수는 이유를 밝히고 반영하지 않는다")
     void rejectsReceiveWithoutDispatch() {
         TransferReceived event = new TransferReceived("recv-808", 808, "STORE",
-            List.of(new TransferReceived.Item(1, 3, 0)), Instant.parse("2026-09-30T00:00:00Z"));
+            List.of(new TransferReceived.Item(1, 3, 0)), false, Instant.parse("2026-09-30T00:00:00Z"));
 
         assertThatThrownBy(() -> transferService.receive(event))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("상품이동이 반영되지 않은 도착 검수입니다");
         assertThat(movementCount(808, "TRANSFER_RECEIVE")).isZero();
+    }
+
+    @Test
+    @DisplayName("도착 검수도 거점을 보지 않고 wms가 알린 대로 넣는다")
+    void followsWhatWmsReported() {
+        dispatched(809, "STORE", "DC", 3);
+
+        publishReceived(809, "DC", false, item(1, 3, 0));
+
+        assertThat(waitForMovement(809, "TRANSFER_RECEIVE")).isEqualTo(1);
+        assertThat(quantityOf("DC", 1, "available")).isEqualTo(3);
+        assertThat(quantityOf("DC", 1, "putaway_wait")).isZero();
+
     }
 
 
@@ -206,11 +219,11 @@ class TransferReceiveTest {
                 {"productId":%d,"goodQuantity":%d,"defectiveQuantity":%d}""".formatted(productId, good, defective);
     }
 
-    private void publishReceived(long transferId, String toLocationCode, String... items) {
+    private void publishReceived(long transferId, String toLocationCode, boolean putawayPending, String... items) {
         publish(transferId, "TransferReceived", """
                 {"eventId":"recv-%d","transferId":%d,"toLocationCode":"%s",
-                 "items":[%s],"occurredAt":"2026-09-30T00:00:00Z"}
-                """.formatted(transferId, transferId, toLocationCode, String.join(",", items)));
+                 "items":[%s],"putawayPending":%b,"occurredAt":"2026-09-30T00:00:00Z"}
+                """.formatted(transferId, transferId, toLocationCode, String.join(",", items), putawayPending));
     }
 
     // 이동으로 온 입고의 적치. 순서 때문에 이동 토픽으로 오지만 이벤트는 공급사 적치와 같다

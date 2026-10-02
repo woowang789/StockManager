@@ -74,7 +74,7 @@ public class ShipmentService {
     }
 
     private StockMovementCommand toMovement(ShipmentCanceled event) {
-        StockState returnTo = event.picked() ? StockState.PUTAWAY_WAIT : StockState.AVAILABLE;
+        StockState returnTo = event.putawayPending() ? StockState.PUTAWAY_WAIT : StockState.AVAILABLE;
         List<StockChange> changes = new ArrayList<>();
         event.items().forEach(item -> {
             changes.add(new StockChange(event.locationCode(), item.productId(), StockState.RESERVED, -item.quantity()));
@@ -84,7 +84,7 @@ public class ShipmentService {
     }
 
     private StockMovementCommand toShortageMovement(ShipmentCanceled event) {
-        StockState from = event.picked() ? StockState.PUTAWAY_WAIT : StockState.AVAILABLE;
+        StockState from = event.putawayPending() ? StockState.PUTAWAY_WAIT : StockState.AVAILABLE;
         List<StockChange> changes = event.shortages().stream()
             .map(shortage -> new StockChange(
                 event.locationCode(), shortage.productId(), from, -shortage.quantity()))

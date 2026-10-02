@@ -66,7 +66,7 @@ class ShipmentCancelTest {
     }
 
     @Test
-    @DisplayName("피킹 전에 취소하면 꺼내지 않았다고 알린다")
+    @DisplayName("피킹 전에 취소하면 적치가 남지 않았다고 알린다")
     void cancelsBeforePicking() {
         shipmentRepository.insert("ORD-1", "DC", List.of(new ShipmentLine(1, 3)));
 
@@ -74,12 +74,12 @@ class ShipmentCancelTest {
 
         assertThat(waitForStatus("ORD-1", "CANCELED")).isTrue();
         ShipmentCanceled event = canceledEventOf("ORD-1");
-        assertThat(event.picked()).isFalse();
+        assertThat(event.putawayPending()).isFalse();
         assertThat(event.items()).containsExactly(new ShipmentCanceled.Item(1, 3));
     }
 
     @Test
-    @DisplayName("피킹한 뒤에 취소하면 이미 꺼냈다고 알린다")
+    @DisplayName("피킹한 뒤에 취소하면 적치가 남았다고 알린다")
     void cancelAfterPicking() {
         shipmentRepository.insert("ORD-2", "DC", List.of(new ShipmentLine(1, 3)));
         shipmentService.pick("ORD-2");
@@ -87,7 +87,7 @@ class ShipmentCancelTest {
         publishCancel("evt-2", "ORD-2");
 
         assertThat(waitForStatus("ORD-2", "CANCELED")).isTrue();
-        assertThat(canceledEventOf("ORD-2").picked()).isTrue();
+        assertThat(canceledEventOf("ORD-2").putawayPending()).isTrue();
     }
 
     @Test
@@ -117,7 +117,7 @@ class ShipmentCancelTest {
         ShipmentCanceled event = canceledEventOf("ORD-4");
         assertThat(event.items()).containsExactly(new ShipmentCanceled.Item(1, 3));
         assertThat(event.shortages()).containsExactly(new ShipmentCanceled.Item(1, 2));
-        assertThat(event.picked()).isTrue();
+        assertThat(event.putawayPending()).isTrue();
     }
 
     @Test
@@ -190,7 +190,7 @@ class ShipmentCancelTest {
         shipmentService.cancel(event);
 
         assertThat(statusOf("ORD-6")).isEqualTo("CANCELED");
-        assertThat(canceledEventOf("ORD-6").picked()).isTrue();
+        assertThat(canceledEventOf("ORD-6").putawayPending()).isTrue();
     }
 
     private Future<?> cancelWhile(String orderNo, ShipmentStatus to, Runnable cancel) {

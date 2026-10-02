@@ -83,6 +83,8 @@ class TransferReceiveTest {
         assertThat(event.toLocationCode()).isEqualTo("STORE");
         assertThat(event.items()).containsExactly(new TransferReceived.Item(1, 2, 0));
 
+        assertThat(event.putawayPending()).isFalse();
+
         assertThat(countOf("InboundInspected")).isZero();
     }
 
@@ -128,6 +130,18 @@ class TransferReceiveTest {
             payloadOf("wms.transfer", String.valueOf(transferId), "InboundStored"), InboundStored.class);
         assertThat(event.inboundId()).isEqualTo(inboundId);
         assertThat(event.items()).containsExactly(new InboundStored.Item(1, 3));
+    }
+
+    @Test
+    @DisplayName("센터에 도착해 검수하면 적치가 남았다고 알린다")
+    void reportsPutawayPendingAtCenter() {
+        long transferId = dispatched("STORE", "DC", 3);
+
+        inboundService.inspect(inboundOf(transferId), List.of(new InspectionLine(1, 3, 0)));
+
+        TransferReceived event = objectMapper.readValue(
+            payloadOf("wms.transfer", String.valueOf(transferId), "TransferReceived"), TransferReceived.class);
+        assertThat(event.putawayPending()).isTrue();
     }
 
     @Test

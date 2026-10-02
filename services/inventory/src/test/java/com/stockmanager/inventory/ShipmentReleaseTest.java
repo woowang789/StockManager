@@ -133,7 +133,7 @@ class ShipmentReleaseTest {
                 {"eventId":"%s","orderNo":"%s","locationCode":"DC",
                  "items":[{"productId":1,"quantity":3},{"productId":2,"quantity":4}],
                  "shortages":[{"productId":1,"quantity":2},{"productId":2,"quantity":1}],
-                 "picked":false,"occurredAt":"2026-09-26T00:00:00Z"}
+                 "putawayPending":false,"occurredAt":"2026-09-26T00:00:00Z"}
                 """.formatted(eventId, orderNo);
         send(orderNo, payload);
     }
@@ -146,14 +146,14 @@ class ShipmentReleaseTest {
             new ReserveCommand("ORDER", orderNo, "DC", List.of(new ReserveCommand.Item(1, quantity))), "sales");
     }
 
-    private void publishCanceled(String eventId, String orderNo, int quantity, int shortage, boolean picked) {
+    private void publishCanceled(String eventId, String orderNo, int quantity, int shortage, boolean putawayPending) {
         String shortages = shortage == 0 ? "" : """
                 {"productId":1,"quantity":%d}""".formatted(shortage);
         String payload = """
                 {"eventId":"%s","orderNo":"%s","locationCode":"DC",
-                 "items":[{"productId":1,"quantity":%d}],"shortages":[%s],"picked":%b,
+                 "items":[{"productId":1,"quantity":%d}],"shortages":[%s],"putawayPending":%b,
                  "occurredAt":"2026-09-26T00:00:00Z"}
-                """.formatted(eventId, orderNo, quantity, shortages, picked);
+                """.formatted(eventId, orderNo, quantity, shortages, putawayPending);
         send(orderNo, payload);
     }
 

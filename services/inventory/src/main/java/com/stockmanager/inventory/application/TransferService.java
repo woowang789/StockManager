@@ -99,13 +99,13 @@ public class TransferService {
             if (stockMovementRepository.findIdByIdempotencyKey(movement.idempotencyKey()).isEmpty()) {
                 throw exception;
             }
-            log.info("이미 반영한 취소힙니다: {}", movement.idempotencyKey());
+            log.info("이미 반영한 취소입니다: {}", movement.idempotencyKey());
         }
     }
 
 
     private StockMovementCommand toMovement(TransferReceived event) {
-        StockState goodState = StockState.forReceivedGoods(event.toLocationCode());
+        StockState goodState = event.putawayPending() ? StockState.PUTAWAY_WAIT : StockState.AVAILABLE;
         List<StockChange> changes = new ArrayList<>();
         event.items().forEach(item -> {
             int received = item.goodQuantity() + item.defectiveQuantity();
@@ -184,6 +184,6 @@ public class TransferService {
     }
 
     private StockState returnTo(TransferCanceled event) {
-        return event.picked() ? StockState.forReceivedGoods(event.fromLocationCode()) : StockState.AVAILABLE;
+        return event.putawayPending() ? StockState.PUTAWAY_WAIT : StockState.AVAILABLE;
     }
 }

@@ -37,9 +37,9 @@ class InboundReceiveTest {
     }
 
     @Test
-    @DisplayName("센터 검수는 양품을 적치대기로, 불량을 불량으로 올린다")
+    @DisplayName("적치가 남았다고 알리면 양품을 적치대기로, 불량을 불량으로 올린다")
     void receivesAtCenter() {
-        publishInspected(901, "DC", 9, 1);
+        publishInspected(901, "DC", true, 9, 1);
 
         assertThat(waitForMovement(901)).isEqualTo(1);
 
@@ -49,9 +49,9 @@ class InboundReceiveTest {
     }
 
     @Test
-    @DisplayName("매장 검수는 적치 없이 바로 가용으로 올린다")
+    @DisplayName("적치가 남지 않았다고 알리면 바로 가용으로 올린다")
     void receivesAtStore() {
-        publishInspected(902, "STORE", 5, 0);
+        publishInspected(902, "STORE", false, 5, 0);
 
         assertThat(waitForMovement(902)).isEqualTo(1);
         assertThat(quantityOf("STORE", "putaway_wait")).isZero();
@@ -61,8 +61,8 @@ class InboundReceiveTest {
     @Test
     @DisplayName("같은 입고가 두 번 와도 한 번만 올라간다")
     void receivesOnce() {
-        publishInspected(903, "DC", 4, 0);
-        publishInspected(903, "DC", 4, 0);
+        publishInspected(903, "DC", true,4, 0);
+        publishInspected(903, "DC", true,4, 0);
 
         assertThat(waitForMovement(903)).isEqualTo(1);
         sleep(Duration.ofSeconds(2));
@@ -73,18 +73,29 @@ class InboundReceiveTest {
     @Test
     @DisplayName("입고 전표는 줄 합계가 0이 아니다")
     void receiveIsNotAnInternalMove() {
-        publishInspected(904, "DC", 9, 1);
+        publishInspected(904, "DC", true,9, 1);
 
         assertThat(waitForMovement(904)).isEqualTo(1);
         assertThat(entrySumOf(904)).isEqualTo(10);
     }
 
-    private void publishInspected(long inboundId, String locationCode, int good, int defective) {
+    @Test
+    @DisplayName("거점을 보지 않고 wms가 알린 대로 넣는다")
+    void followsWhatWmsReported() {
+        publishInspected(905, "DC", false, 6, 0);
+
+        assertThat(waitForMovement(905)).isEqualTo(1);
+        assertThat(quantityOf("DC", "available")).isEqualTo(6);
+        assertThat(quantityOf("DC", "putaway_wait")).isZero();
+    }
+
+    private void publishInspected(long inboundId, String locationCode, boolean putawayPending, int good,
+                                  int defective) {
         String payload = """
                 {"eventId":"evt-%d-%d","inboundId":%d,"locationCode":"%s",
                  "items":[{"productId":1,"goodQuantity":%d,"defectiveQuantity":%d}],
-                 "occurredAt":"2026-09-27T00:00:00Z"}
-                """.formatted(inboundId, good, inboundId, locationCode, good, defective);
+                 "putawayPending":%b,"occurredAt":"2026-09-27T00:00:00Z"}
+                """.formatted(inboundId, good, inboundId, locationCode, good, defective, putawayPending);
         kafkaTemplate.send(new ProducerRecord<>(TOPIC, null, String.valueOf(inboundId), payload,
                 List.of(new RecordHeader(EventHeaders.EVENT_TYPE,
                     "InboundInspected".getBytes(StandardCharsets.UTF_8)))))

@@ -6,6 +6,7 @@ import com.stockmanager.wms.domain.InboundLine;
 import com.stockmanager.wms.domain.InboundOrigin;
 import com.stockmanager.wms.domain.InboundStatus;
 import com.stockmanager.wms.domain.InspectionLine;
+import com.stockmanager.wms.domain.Locations;
 import com.stockmanager.wms.domain.ProductLines;
 import com.stockmanager.wms.domain.PutawayLine;
 import com.stockmanager.wms.infrastructure.InboundEventRecorder;
@@ -23,10 +24,6 @@ import java.util.stream.Collectors;
 
 @Service
 public class InboundService {
-
-    private static final String STORE = "STORE";
-
-    private static final String CENTER = "DC";
 
     private final InboundRepository inboundRepository;
     private final ProductBinRepository productBinRepository;
@@ -59,9 +56,8 @@ public class InboundService {
             if (inbound.origin() instanceof InboundOrigin.Transfer) {
                 requireNoMoreThanSent(inbound, results);
             }
-            InboundStatus to = STORE.equals(inbound.locationCode())
-                ? InboundStatus.STORED
-                : InboundStatus.INSPECTED;
+            boolean putawayPending = Locations.managesBins(inbound.locationCode());
+            InboundStatus to = putawayPending ? InboundStatus.INSPECTED : InboundStatus.STORED;
             int changed = inboundRepository.changeStatus(inboundId, InboundStatus.ARRIVED, to);
             if (changed == 0) {
                 throw new IllegalArgumentException(
@@ -70,8 +66,9 @@ public class InboundService {
             inboundRepository.recordInspection(inboundId, results);
             switch (inbound.origin()) {
                 case InboundOrigin.Supplier() ->
-                    inboundEventRecorder.inboundInspected(inboundId, inbound.locationCode(), results);
-                case InboundOrigin.Transfer(long transferId) -> transferService.receive(transferId, results);
+                    inboundEventRecorder.inboundInspected(inboundId, inbound.locationCode(), results, putawayPending);
+                case InboundOrigin.Transfer(long transferId) ->
+                    transferService.receive(transferId, results, putawayPending);
             }
             return inboundRepository.find(inboundId).orElseThrow();
         });
@@ -109,7 +106,7 @@ public class InboundService {
 
     public void assignBin(long productId, String binCode) {
         try {
-            productBinRepository.assign(CENTER, productId, binCode);
+            productBinRepository.assign(Locations.CENTER, productId, binCode);
         } catch (DuplicateKeyException exception) {
             throw new IllegalArgumentException("이미 다른 상품이 쓰는 칸입니다: " + binCode);
         }

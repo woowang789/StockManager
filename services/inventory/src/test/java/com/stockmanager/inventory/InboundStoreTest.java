@@ -78,7 +78,7 @@ class InboundStoreTest {
         publish(inboundId, "InboundInspected", """
                 {"eventId":"insp-%d","inboundId":%d,"locationCode":"DC",
                  "items":[{"productId":1,"goodQuantity":%d,"defectiveQuantity":%d}],
-                 "occurredAt":"2026-09-28T00:00:00Z"}
+                 "putawayPending":true,"occurredAt":"2026-09-28T00:00:00Z"}
                 """.formatted(inboundId, inboundId, good, defective));
         long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
         while (System.nanoTime() < deadline && quantityOf("putaway_wait") != good) {

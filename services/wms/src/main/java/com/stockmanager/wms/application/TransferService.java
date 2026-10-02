@@ -4,6 +4,7 @@ import com.stockmanager.common.web.ConcurrentUpdateException;
 import com.stockmanager.wms.domain.InboundLine;
 import com.stockmanager.wms.domain.InboundOrigin;
 import com.stockmanager.wms.domain.InspectionLine;
+import com.stockmanager.wms.domain.Locations;
 import com.stockmanager.wms.domain.ProductLines;
 import com.stockmanager.wms.domain.Transfer;
 import com.stockmanager.wms.domain.TransferLine;
@@ -115,11 +116,11 @@ public class TransferService {
         });
     }
 
-    public void receive(long transferId, List<InspectionLine> results) {
+    public void receive(long transferId, List<InspectionLine> results, boolean putawayPending) {
         if (transferRepository.changeStatus(transferId, TransferStatus.IN_TRANSIT, TransferStatus.RECEIVED) == 0) {
             throw new IllegalStateException("이동 중이 아닌 이동의 입고 문서입니다: " + transferId);
         }
-        transferEventRecorder.transferReceived(find(transferId), results);
+        transferEventRecorder.transferReceived(find(transferId), results, putawayPending);
     }
 
     public Transfer cancel(long transferId) {
@@ -142,7 +143,8 @@ public class TransferService {
             throw new ConcurrentUpdateException(
                 "취소하는 사이에 상태가 바뀌었습니다. 다시 시도해 주세요: " + transfer.id() + " (" + from + ")");
         }
-        transferEventRecorder.transferCanceled(transfer, shortages, from == TransferStatus.PICKED);
+        boolean putawayPending = from == TransferStatus.PICKED && Locations.managesBins(transfer.fromLocationCode());
+        transferEventRecorder.transferCanceled(transfer, shortages, putawayPending);
     }
 
     private Transfer advance(long transferId, TransferStatus from, TransferStatus to) {
