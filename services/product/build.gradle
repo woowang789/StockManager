@@ -1,0 +1,17 @@
+plugins {
+    id 'stock.service'
+}
+
+dependencies {
+    implementation project(':common:web')
+    implementation libs.spring.boot.starter.webmvc
+    implementation libs.spring.boot.starter.data.jpa
+    implementation libs.spring.boot.starter.validation
+    implementation libs.spring.boot.starter.flyway
+    implementation libs.flyway.mysql
+    runtimeOnly libs.mysql.connector.j
+
+    testImplementation libs.spring.boot.starter.webmvc.test
+    testImplementation libs.spring.boot.testcontainers
+    testImplementation libs.testcontainers.mysql
+}
