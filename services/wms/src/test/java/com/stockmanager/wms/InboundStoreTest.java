@@ -1,6 +1,7 @@
 package com.stockmanager.wms;
 
 import com.stockmanager.wms.application.InboundService;
+import com.stockmanager.wms.application.ProductBinService;
 import com.stockmanager.wms.domain.Inbound;
 import com.stockmanager.wms.domain.InboundLine;
 import com.stockmanager.wms.domain.InboundStatus;
@@ -26,6 +27,9 @@ class InboundStoreTest {
     InboundService inboundService;
 
     @Autowired
+    ProductBinService productBinService;
+
+    @Autowired
     JdbcClient jdbcClient;
 
     @BeforeEach
@@ -37,32 +41,9 @@ class InboundStoreTest {
     }
 
     @Test
-    @DisplayName("칸을 지정하고 바꿀 수 있다")
-    void assignsAndReassignsBin() {
-        inboundService.assignBin(1, "A-01-03");
-        assertThat(binOf(1)).isEqualTo("A-01-03");
-
-        inboundService.assignBin(1, "B-02-01");
-
-        assertThat(binOf(1)).isEqualTo("B-02-01");
-        assertThat(binCount()).isEqualTo(1);
-    }
-
-    @Test
-    @DisplayName("다른 상품이 쓰는 칸은 지정할 수 없다")
-    void rejectsBinTakenByAnotherProduct() {
-        inboundService.assignBin(1, "A-01-03");
-
-        assertThatThrownBy(() -> inboundService.assignBin(2, "A-01-03"))
-            .isInstanceOf(IllegalArgumentException.class)
-            .hasMessageContaining("이미 다른 상품이 쓰는 칸입니다");
-        assertThat(binOf(2)).isNull();
-    }
-
-    @Test
-    @DisplayName("적치 안내는 양품 수량과 칸을 알려준다")
+    @DisplayName("적치 안내는 양품 수량과 칸을 알려 준다")
     void guidesWhereToPut() {
-        inboundService.assignBin(1, "A-01-03");
+        productBinService.assign(1, "A-01-03");
         long inboundId = inspected(9, 1);
 
         assertThat(inboundService.putawayGuide(inboundId))
@@ -72,7 +53,7 @@ class InboundStoreTest {
     @Test
     @DisplayName("적치하면 STORED가 되고 InboundStored가 남는다")
     void storesAndRecordsEvent() {
-        inboundService.assignBin(1, "A-01-03");
+        productBinService.assign(1, "A-01-03");
         long inboundId = inspected(9, 1);
 
         Inbound stored = inboundService.store(inboundId);
@@ -97,7 +78,7 @@ class InboundStoreTest {
     @Test
     @DisplayName("검수하지 않은 입고는 적치할 수 없다")
     void rejectsStoreBeforeInspection() {
-        inboundService.assignBin(1, "A-01-03");
+        productBinService.assign(1, "A-01-03");
         long inboundId = inboundService.arrive("DC", List.of(InboundLine.expected(1, 10))).id();
 
         assertThatThrownBy(() -> inboundService.store(inboundId))
@@ -108,7 +89,7 @@ class InboundStoreTest {
     @Test
     @DisplayName("두 번 적치할 수 없다")
     void rejectsSecondStore() {
-        inboundService.assignBin(1, "A-01-03");
+        productBinService.assign(1, "A-01-03");
         long inboundId = inspected(9, 1);
         inboundService.store(inboundId);
 
@@ -135,15 +116,6 @@ class InboundStoreTest {
         long inboundId = inboundService.arrive("DC", List.of(InboundLine.expected(1, good + defective))).id();
         inboundService.inspect(inboundId, List.of(new InspectionLine(1, good, defective)));
         return inboundId;
-    }
-
-    private String binOf(long productId) {
-        return jdbcClient.sql("SELECT bin_code FROM product_bin WHERE location_code='DC' AND product_id=:p")
-            .param("p", productId).query(String.class).optional().orElse(null);
-    }
-
-    private int binCount() {
-        return jdbcClient.sql("SELECT COUNT(*) FROM product_bin").query(Integer.class).single();
     }
 
     private String statusOf(long inboundId) {

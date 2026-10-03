@@ -2,10 +2,12 @@ package com.stockmanager.inventory.infrastructure;
 
 import com.stockmanager.common.event.EventHeaders;
 import com.stockmanager.common.event.InboundStored;
+import com.stockmanager.common.event.ReputawayStored;
 import com.stockmanager.common.event.TransferCanceled;
 import com.stockmanager.common.event.TransferDispatched;
 import com.stockmanager.common.event.TransferReceived;
 import com.stockmanager.inventory.application.InboundService;
+import com.stockmanager.inventory.application.ReputawayService;
 import com.stockmanager.inventory.application.TransferService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,16 +24,19 @@ class TransferEventListener {
     private static final String TRANSFER_RECEIVED = TransferReceived.class.getSimpleName();
     private static final String TRANSFER_CANCELED = TransferCanceled.class.getSimpleName();
     private static final String INBOUND_STORED = InboundStored.class.getSimpleName();
+    private static final String REPUTAWAY_STORED = ReputawayStored.class.getSimpleName();
 
     private static final Logger log = LoggerFactory.getLogger(TransferEventListener.class);
 
     private final TransferService transferService;
     private final InboundService inboundService;
+    private final ReputawayService reputawayService;
     private final ObjectMapper objectMapper;
 
-    TransferEventListener(TransferService transferService, InboundService inboundService,ObjectMapper objectMapper) {
+    TransferEventListener(TransferService transferService, InboundService inboundService,ReputawayService reputawayService,ObjectMapper objectMapper) {
         this.transferService = transferService;
         this.inboundService = inboundService;
+        this.reputawayService = reputawayService;
         this.objectMapper = objectMapper;
     }
 
@@ -51,6 +56,10 @@ class TransferEventListener {
         }
         if (INBOUND_STORED.equals(eventType)) {
             inboundService.store(objectMapper.readValue(payload, InboundStored.class));
+            return;
+        }
+        if (REPUTAWAY_STORED.equals(eventType)) {
+            reputawayService.store(objectMapper.readValue(payload, ReputawayStored.class));
             return;
         }
         log.debug("아직 처리하지 않는 이벤트입니다: {}", eventType);

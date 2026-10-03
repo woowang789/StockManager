@@ -51,6 +51,8 @@ class TransferDispatchTest {
     void clearAll() {
         jdbcClient.sql("DELETE FROM inbound_item").update();
         jdbcClient.sql("DELETE FROM inbound").update();
+        jdbcClient.sql("DELETE FROM reputaway_item").update();
+        jdbcClient.sql("DELETE FROM reputaway").update();
         jdbcClient.sql("DELETE FROM transfer_item").update();
         jdbcClient.sql("DELETE FROM transfer").update();
         jdbcClient.sql("DELETE FROM outbox").update();

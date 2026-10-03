@@ -3,7 +3,11 @@ package com.stockmanager.wms;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.stockmanager.common.event.TransferCanceled;
 import com.stockmanager.common.web.ConcurrentUpdateException;
+import com.stockmanager.wms.application.ReputawayService;
 import com.stockmanager.wms.application.TransferService;
+import com.stockmanager.wms.domain.Reputaway;
+import com.stockmanager.wms.domain.ReputawayLine;
+import com.stockmanager.wms.domain.ReputawayStatus;
 import com.stockmanager.wms.domain.TransferLine;
 import com.stockmanager.wms.domain.TransferStatus;
 import org.junit.jupiter.api.BeforeEach;
@@ -36,6 +40,9 @@ class TransferCancelTest {
     TransferService transferService;
 
     @Autowired
+    ReputawayService reputawayService;
+
+    @Autowired
     WireMockServer inventoryStub;
 
     @Autowired
@@ -51,6 +58,8 @@ class TransferCancelTest {
     void clearAll() {
         jdbcClient.sql("DELETE FROM inbound_item").update();
         jdbcClient.sql("DELETE FROM inbound").update();
+        jdbcClient.sql("DELETE FROM reputaway_item").update();
+        jdbcClient.sql("DELETE FROM reputaway").update();
         jdbcClient.sql("DELETE FROM transfer_item").update();
         jdbcClient.sql("DELETE FROM transfer").update();
         jdbcClient.sql("DELETE FROM outbox").update();
@@ -59,7 +68,7 @@ class TransferCancelTest {
     }
 
     @Test
-    @DisplayName("피킹 전에 취소하면 적치가 남지 않았다고 알린다")
+    @DisplayName("피킹 전에 취소하면 적치가 남지 않았다고 알리고, 재적치 작업도 없다")
     void cancelsBeforePick() {
         long transferId = requested();
 
@@ -70,10 +79,11 @@ class TransferCancelTest {
         assertThat(event.items()).containsExactly(new TransferCanceled.Item(1, 3));
         assertThat(event.shortages()).isEmpty();
         assertThat(event.putawayPending()).isFalse();
+        assertThat(reputawayOf(transferId)).isEmpty();
     }
 
     @Test
-    @DisplayName("센터에서 피킹한 뒤에 취소하면 적치가 남았다고 알린다")
+    @DisplayName("센터에서 피킹한 뒤에 취소하면 적치가 남았다고 알리고, 칸에 다시 넣을 재적치 작업을 만든다")
     void cancelsAfterPick() {
         long transferId = requested();
         transferService.pick(transferId);
@@ -81,10 +91,15 @@ class TransferCancelTest {
         transferService.cancel(transferId);
 
         assertThat(canceledEventOf(transferId).putawayPending()).isTrue();
+        Reputaway reputaway = reputawayOf(transferId).orElseThrow();
+        assertThat(reputaway.status()).isEqualTo(ReputawayStatus.READY);
+        // 물건은 출발 거점의 칸에서 꺼냈다. 다시 넣는 곳도 거기다
+        assertThat(reputaway.locationCode()).isEqualTo("DC");
+        assertThat(reputaway.lines()).containsExactly(new ReputawayLine(1, 3));
     }
 
     @Test
-    @DisplayName("매장에서 피킹한 뒤에 취소하면 적치가 남지 않았다고 알린다")
+    @DisplayName("매장에서 피킹한 뒤에 취소하면 적치가 남지 않았다고 알리고, 재적치 작업도 없다")
     void cancelsAfterPickAtStore() {
         long transferId = transferService.request("STORE", "DC", List.of(new TransferLine(1, 2))).id();
         transferService.pick(transferId);
@@ -92,17 +107,19 @@ class TransferCancelTest {
         transferService.cancel(transferId);
 
         assertThat(canceledEventOf(transferId).putawayPending()).isFalse();
-
+        assertThat(reputawayOf(transferId)).isEmpty();
     }
 
     @Test
-    @DisplayName("두 번 취소해도 이벤트는 하나다")
+    @DisplayName("두 번 취소해도 이벤트와 재적치 작업은 하나다")
     void cancelsOnce() {
         long transferId = requested();
+        transferService.pick(transferId);
         transferService.cancel(transferId);
 
         assertThat(transferService.cancel(transferId).status()).isEqualTo(TransferStatus.CANCELED);
         assertThat(canceledCountOf(transferId)).isEqualTo(1);
+        assertThat(reputawayCountOf(transferId)).isEqualTo(1);
     }
 
     @Test
@@ -160,6 +177,8 @@ class TransferCancelTest {
         assertThat(event.items()).containsExactly(new TransferCanceled.Item(1, 3));
         assertThat(event.shortages()).containsExactly(new TransferCanceled.Item(1, 2));
         assertThat(event.putawayPending()).isTrue();
+        // 찾지 못한 2개는 꺼낸 것이 아니라 넣을 것도 없다. 찾은 1개만 다시 넣는다
+        assertThat(reputawayOf(transferId).orElseThrow().lines()).containsExactly(new ReputawayLine(1, 1));
     }
 
     @Test
@@ -213,6 +232,7 @@ class TransferCancelTest {
 
         assertThat(transferService.find(transferId).status()).isEqualTo(TransferStatus.IN_TRANSIT);
         assertThat(canceledCountOf(transferId)).isZero();
+        assertThat(reputawayOf(transferId)).isEmpty();
     }
 
 
@@ -233,6 +253,22 @@ class TransferCancelTest {
             });
             return started.getFirst();
         }
+    }
+
+    // 재적치 작업은 취소에서 생겨 번호를 모른다. 출처인 이동 번호로 찾는다
+    private Optional<Reputaway> reputawayOf(long transferId) {
+        return jdbcClient.sql("SELECT id FROM reputaway WHERE transfer_id = :transferId")
+            .param("transferId", transferId)
+            .query(Long.class)
+            .optional()
+            .map(reputawayService::find);
+    }
+
+    private int reputawayCountOf(long transferId) {
+        return jdbcClient.sql("SELECT COUNT(*) FROM reputaway WHERE transfer_id = :transferId")
+            .param("transferId", transferId)
+            .query(Integer.class)
+            .single();
     }
 
     private TransferCanceled canceledEventOf(long transferId) {

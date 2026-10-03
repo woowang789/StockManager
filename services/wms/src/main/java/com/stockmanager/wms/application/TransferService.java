@@ -6,6 +6,8 @@ import com.stockmanager.wms.domain.InboundOrigin;
 import com.stockmanager.wms.domain.InspectionLine;
 import com.stockmanager.wms.domain.Locations;
 import com.stockmanager.wms.domain.ProductLines;
+import com.stockmanager.wms.domain.ReputawayLine;
+import com.stockmanager.wms.domain.ReputawayOrigin;
 import com.stockmanager.wms.domain.Transfer;
 import com.stockmanager.wms.domain.TransferLine;
 import com.stockmanager.wms.domain.TransferStatus;
@@ -38,15 +40,17 @@ public class TransferService {
     private final InventoryClient inventoryClient;
     private final InboundRepository inboundRepository;
     private final TransferEventRecorder transferEventRecorder;
+    private final ReputawayService reputawayService;
     private final TransactionTemplate transactionTemplate;
 
     TransferService(TransferRepository transferRepository, InventoryClient inventoryClient,
                     InboundRepository inboundRepository, TransferEventRecorder transferEventRecorder,
-                    TransactionTemplate transactionTemplate) {
+                    ReputawayService reputawayService, TransactionTemplate transactionTemplate) {
         this.transferRepository = transferRepository;
         this.inventoryClient = inventoryClient;
         this.inboundRepository = inboundRepository;
         this.transferEventRecorder = transferEventRecorder;
+        this.reputawayService = reputawayService;
         this.transactionTemplate = transactionTemplate;
     }
 
@@ -145,6 +149,16 @@ public class TransferService {
         }
         boolean putawayPending = from == TransferStatus.PICKED && Locations.managesBins(transfer.fromLocationCode());
         transferEventRecorder.transferCanceled(transfer, shortages, putawayPending);
+        if (putawayPending) {
+            reputawayService.open(transfer.fromLocationCode(), new ReputawayOrigin.Transfer(transfer.id()),
+                toReputawayLines(transfer.lines()), toReputawayLines(shortages));
+        }
+    }
+
+    private List<ReputawayLine> toReputawayLines(List<TransferLine> lines) {
+        return lines.stream()
+            .map(line -> new ReputawayLine(line.productId(), line.quantity()))
+            .toList();
     }
 
     private Transfer advance(long transferId, TransferStatus from, TransferStatus to) {

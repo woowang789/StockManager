@@ -7,7 +7,11 @@ import com.stockmanager.common.event.EventHeaders;
 import com.stockmanager.common.event.OrderCancelRequested;
 import com.stockmanager.common.event.ShipmentCanceled;
 import com.stockmanager.common.web.ConcurrentUpdateException;
+import com.stockmanager.wms.application.ReputawayService;
 import com.stockmanager.wms.application.ShipmentService;
+import com.stockmanager.wms.domain.Reputaway;
+import com.stockmanager.wms.domain.ReputawayLine;
+import com.stockmanager.wms.domain.ReputawayStatus;
 import com.stockmanager.wms.domain.ShipmentLine;
 import com.stockmanager.wms.domain.ShipmentStatus;
 import com.stockmanager.wms.infrastructure.ShipmentRepository;
@@ -46,6 +50,9 @@ class ShipmentCancelTest {
     ShipmentRepository shipmentRepository;
 
     @Autowired
+    ReputawayService reputawayService;
+
+    @Autowired
     JdbcClient jdbcClient;
 
     @Autowired
@@ -59,6 +66,8 @@ class ShipmentCancelTest {
 
     @BeforeEach
     void clearAll() {
+        jdbcClient.sql("DELETE FROM reputaway_item").update();
+        jdbcClient.sql("DELETE FROM reputaway").update();
         jdbcClient.sql("DELETE FROM shipment_item").update();
         jdbcClient.sql("DELETE FROM shipment").update();
         jdbcClient.sql("DELETE FROM processed_event").update();
@@ -66,7 +75,7 @@ class ShipmentCancelTest {
     }
 
     @Test
-    @DisplayName("피킹 전에 취소하면 적치가 남지 않았다고 알린다")
+    @DisplayName("피킹 전에 취소하면 적치가 남지 않았다고 알리고, 재적치 작업도 없다")
     void cancelsBeforePicking() {
         shipmentRepository.insert("ORD-1", "DC", List.of(new ShipmentLine(1, 3)));
 
@@ -76,10 +85,11 @@ class ShipmentCancelTest {
         ShipmentCanceled event = canceledEventOf("ORD-1");
         assertThat(event.putawayPending()).isFalse();
         assertThat(event.items()).containsExactly(new ShipmentCanceled.Item(1, 3));
+        assertThat(reputawayOf("ORD-1")).isEmpty();
     }
 
     @Test
-    @DisplayName("피킹한 뒤에 취소하면 적치가 남았다고 알린다")
+    @DisplayName("피킹한 뒤에 취소하면 적치가 남았다고 알리고, 칸에 다시 넣을 재적치 작업을 만든다")
     void cancelAfterPicking() {
         shipmentRepository.insert("ORD-2", "DC", List.of(new ShipmentLine(1, 3)));
         shipmentService.pick("ORD-2");
@@ -88,6 +98,10 @@ class ShipmentCancelTest {
 
         assertThat(waitForStatus("ORD-2", "CANCELED")).isTrue();
         assertThat(canceledEventOf("ORD-2").putawayPending()).isTrue();
+        Reputaway reputaway = reputawayOf("ORD-2").orElseThrow();
+        assertThat(reputaway.status()).isEqualTo(ReputawayStatus.READY);
+        assertThat(reputaway.locationCode()).isEqualTo("DC");
+        assertThat(reputaway.lines()).containsExactly(new ReputawayLine(1, 3));
     }
 
     @Test
@@ -118,6 +132,20 @@ class ShipmentCancelTest {
         assertThat(event.items()).containsExactly(new ShipmentCanceled.Item(1, 3));
         assertThat(event.shortages()).containsExactly(new ShipmentCanceled.Item(1, 2));
         assertThat(event.putawayPending()).isTrue();
+
+        assertThat(reputawayOf("ORD-4").orElseThrow().lines()).containsExactly(new ReputawayLine(1, 1));
+    }
+
+    @Test
+    @DisplayName("모두 찾지 못했으면 다시 넣을 것이 없어 재적치 작업을 만들지 않는다")
+    void opensNothingWhenAllShort() {
+        shipmentRepository.insert("ORD-10", "DC", List.of(new ShipmentLine(1, 3)));
+        shipmentService.pick("ORD-10");
+
+        shipmentService.cancelForShortage("ORD-10", List.of(new ShipmentLine(1, 3)));
+
+        assertThat(statusOf("ORD-10")).isEqualTo("CANCELED");
+        assertThat(reputawayOf("ORD-10")).isEmpty();
     }
 
     @Test
@@ -132,6 +160,20 @@ class ShipmentCancelTest {
 
         assertThat(statusOf("ORD-7")).isEqualTo("PICKED");
         assertThat(canceledPayloadOf("ORD-7")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("결품으로 먼저 취소된 출하는 취소 요청이 와도 다시 취소하지 않는다")
+    void ignoresCancelRequestAfterShortage() {
+        shipmentRepository.insert("ORD-11", "DC", List.of(new ShipmentLine(1, 3)));
+        shipmentService.pick("ORD-11");
+        shipmentService.cancelForShortage("ORD-11", List.of(new ShipmentLine(1, 1)));
+
+        shipmentService.cancel(new OrderCancelRequested("evt-11", "ORD-11", Instant.now()));
+
+        assertThat(canceledCountOf("ORD-11")).isEqualTo(1);
+        assertThat(reputawayOf("ORD-11").orElseThrow().lines()).containsExactly(new ReputawayLine(1, 2));
+        assertThat(processedCount("evt-11")).isEqualTo(1);
     }
 
     @Test
@@ -173,6 +215,7 @@ class ShipmentCancelTest {
 
         assertThat(statusOf("ORD-5")).isEqualTo("PICKED");
         assertThat(canceledPayloadOf("ORD-5")).isEmpty();
+        assertThat(reputawayOf("ORD-5")).isEmpty();
     }
 
     @Test
@@ -191,6 +234,7 @@ class ShipmentCancelTest {
 
         assertThat(statusOf("ORD-6")).isEqualTo("CANCELED");
         assertThat(canceledEventOf("ORD-6").putawayPending()).isTrue();
+        assertThat(reputawayOf("ORD-6")).isPresent();
     }
 
     private Future<?> cancelWhile(String orderNo, ShipmentStatus to, Runnable cancel) {
@@ -223,6 +267,24 @@ class ShipmentCancelTest {
                 List.of(new RecordHeader(EventHeaders.EVENT_TYPE,
                     "OrderCancelRequested".getBytes(StandardCharsets.UTF_8)))))
             .join();
+    }
+
+    private Optional<Reputaway> reputawayOf(String orderNo) {
+        return jdbcClient.sql("SELECT id FROM reputaway WHERE order_no = :orderNo")
+            .param("orderNo", orderNo)
+            .query(Long.class)
+            .optional()
+            .map(reputawayService::find);
+    }
+
+    private int canceledCountOf(String orderNo) {
+        return jdbcClient.sql("""
+                        SELECT COUNT(*) FROM outbox
+                        WHERE message_key = :orderNo AND event_type = 'ShipmentCanceled'
+                """)
+            .param("orderNo", orderNo)
+            .query(Integer.class)
+            .single();
     }
 
     private ShipmentCanceled canceledEventOf(String orderNo) {

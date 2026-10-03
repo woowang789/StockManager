@@ -26,15 +26,15 @@ import java.util.stream.Collectors;
 public class InboundService {
 
     private final InboundRepository inboundRepository;
-    private final ProductBinRepository productBinRepository;
+    private final ProductBinService productBinService;
     private final TransferService transferService;
     private final InboundEventRecorder inboundEventRecorder;
     private final TransactionTemplate transactionTemplate;
 
-    InboundService(InboundRepository inboundRepository,ProductBinRepository productBinRepository,
+    InboundService(InboundRepository inboundRepository,ProductBinService productBinService,
                    TransferService transferService, InboundEventRecorder inboundEventRecorder, TransactionTemplate transactionTemplate) {
         this.inboundRepository = inboundRepository;
-        this.productBinRepository = productBinRepository;
+        this.productBinService = productBinService;
         this.transferService = transferService;
         this.inboundEventRecorder = inboundEventRecorder;
         this.transactionTemplate = transactionTemplate;
@@ -76,14 +76,12 @@ public class InboundService {
 
     public List<PutawayLine> putawayGuide(long inboundId) {
         Inbound inbound = find(inboundId);
-        Map<Long, String> bins = productBinRepository.findAll(inbound.locationCode());
-        List<PutawayLine> lines = new ArrayList<>();
-        inbound.lines().forEach(line -> {
-            if (line.goodQuantity() != null && line.goodQuantity() > 0) {
-                lines.add(new PutawayLine(line.productId(), line.goodQuantity(), bins.get(line.productId())));
-            }
-        });
-        return lines;
+
+        List<InboundLine> goods = inbound.lines().stream()
+            .filter(line -> line.goodQuantity() != null && line.goodQuantity() > 0)
+            .toList();
+        return productBinService.guide(inbound.locationCode(), goods,
+            InboundLine::productId, InboundLine::goodQuantity);
     }
 
     public Inbound store(long inboundId) {
@@ -94,7 +92,7 @@ public class InboundService {
                     "적치할 수 없는 상태입니다: " + inboundId + " (" + inbound.status() + ")");
             }
             List<PutawayLine> guided = putawayGuide(inboundId);
-            requireEveryBinAssigned(inboundId, guided);
+            productBinService.requireEveryBinAssigned(guided);
             if (inboundRepository.changeStatus(inboundId, InboundStatus.INSPECTED, InboundStatus.STORED) == 0) {
                 throw new ConcurrentUpdateException(
                     "적치하는 사이에 상태가 바뀌었습니다. 다시 시도해 주세요: " + inboundId);
@@ -104,29 +102,9 @@ public class InboundService {
         });
     }
 
-    public void assignBin(long productId, String binCode) {
-        try {
-            productBinRepository.assign(Locations.CENTER, productId, binCode);
-        } catch (DuplicateKeyException exception) {
-            throw new IllegalArgumentException("이미 다른 상품이 쓰는 칸입니다: " + binCode);
-        }
-    }
-
     public Inbound find(long inboundId) {
         return inboundRepository.find(inboundId)
             .orElseThrow(() -> new IllegalArgumentException("입고 문서가 없습니다: " + inboundId));
-    }
-
-    private void requireEveryBinAssigned(long inboundId, List<PutawayLine> guided) {
-        List<Long> missing = guided.stream()
-            .filter(line -> line.binCode() == null)
-            .map(PutawayLine::productId)
-            .toList();
-        if (!missing.isEmpty()) {
-            throw new IllegalArgumentException(
-                "칸이 지정되지 않은 상품이 있습니다: " + inboundId + ", 상품 " + missing
-            );
-        }
     }
 
     private void requireNoMoreThanSent(Inbound inbound, List<InspectionLine> results) {

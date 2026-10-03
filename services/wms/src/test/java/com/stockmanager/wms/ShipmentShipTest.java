@@ -34,6 +34,8 @@ class ShipmentShipTest {
 
     @BeforeEach
     void clearAll() {
+        jdbcClient.sql("DELETE FROM reputaway_item").update();
+        jdbcClient.sql("DELETE FROM reputaway").update();
         jdbcClient.sql("DELETE FROM shipment_item").update();
         jdbcClient.sql("DELETE FROM shipment").update();
         jdbcClient.sql("DELETE FROM processed_event").update();

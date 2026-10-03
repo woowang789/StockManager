@@ -5,6 +5,7 @@ import com.stockmanager.common.event.InboundInspected;
 import com.stockmanager.common.event.InboundStored;
 import com.stockmanager.common.event.TransferReceived;
 import com.stockmanager.wms.application.InboundService;
+import com.stockmanager.wms.application.ProductBinService;
 import com.stockmanager.wms.application.TransferService;
 import com.stockmanager.wms.domain.InboundLine;
 import com.stockmanager.wms.domain.InboundStatus;
@@ -38,6 +39,9 @@ class TransferReceiveTest {
     InboundService inboundService;
 
     @Autowired
+    ProductBinService productBinService;
+
+    @Autowired
     WireMockServer inventoryStub;
 
     @Autowired
@@ -50,6 +54,8 @@ class TransferReceiveTest {
     void clearAll() {
         jdbcClient.sql("DELETE FROM inbound_item").update();
         jdbcClient.sql("DELETE FROM inbound").update();
+        jdbcClient.sql("DELETE FROM reputaway_item").update();
+        jdbcClient.sql("DELETE FROM reputaway").update();
         jdbcClient.sql("DELETE FROM transfer_item").update();
         jdbcClient.sql("DELETE FROM transfer").update();
         jdbcClient.sql("DELETE FROM product_bin").update();
@@ -122,7 +128,7 @@ class TransferReceiveTest {
         long transferId = dispatched("STORE", "DC", 3);
         long inboundId = inboundOf(transferId);
         inboundService.inspect(inboundId, List.of(new InspectionLine(1, 3, 0)));
-        inboundService.assignBin(1, "A-01-01");
+        productBinService.assign(1, "A-01-01");
 
         inboundService.store(inboundId);
 

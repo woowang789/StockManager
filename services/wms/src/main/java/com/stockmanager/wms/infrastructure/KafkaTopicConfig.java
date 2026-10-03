@@ -19,4 +19,9 @@ class KafkaTopicConfig {
         return TopicBuilder.name(InboundEventRecorder.TOPIC).partitions(3).replicas(1)
             .build();
     }
+
+    @Bean
+    NewTopic wmsTransferTopic() {
+        return TopicBuilder.name(TransferEventRecorder.TOPIC).partitions(3).replicas(1).build();
+    }
 }

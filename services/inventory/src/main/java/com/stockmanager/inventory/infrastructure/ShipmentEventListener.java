@@ -1,8 +1,10 @@
 package com.stockmanager.inventory.infrastructure;
 
 import com.stockmanager.common.event.EventHeaders;
+import com.stockmanager.common.event.ReputawayStored;
 import com.stockmanager.common.event.ShipmentCanceled;
 import com.stockmanager.common.event.ShipmentShipped;
+import com.stockmanager.inventory.application.ReputawayService;
 import com.stockmanager.inventory.application.ShipmentService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,14 +19,17 @@ class ShipmentEventListener {
 
     private static final String SHIPMENT_SHIPPED = ShipmentShipped.class.getSimpleName();
     private static final String SHIPMENT_CANCELED = ShipmentCanceled.class.getSimpleName();
+    private static final String REPUTAWAY_STORED = ReputawayStored.class.getSimpleName();
 
     private static final Logger log = LoggerFactory.getLogger(ShipmentEventListener.class);
 
     private final ShipmentService shipmentService;
+    private final ReputawayService reputawayService;
     private final ObjectMapper objectMapper;
 
-    ShipmentEventListener(ShipmentService shipmentService, ObjectMapper objectMapper) {
+    ShipmentEventListener(ShipmentService shipmentService,ReputawayService reputawayService, ObjectMapper objectMapper) {
         this.shipmentService = shipmentService;
+        this.reputawayService = reputawayService;
         this.objectMapper = objectMapper;
     }
 
@@ -36,6 +41,10 @@ class ShipmentEventListener {
         }
         if (SHIPMENT_CANCELED.equals(eventType)) {
             shipmentService.release(objectMapper.readValue(payload, ShipmentCanceled.class));
+            return;
+        }
+        if (REPUTAWAY_STORED.equals(eventType)) {
+            reputawayService.store(objectMapper.readValue(payload, ReputawayStored.class));
             return;
         }
         log.debug("아직 처리하지 않는 이벤트입니다: {}", eventType);

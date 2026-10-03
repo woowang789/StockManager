@@ -5,6 +5,8 @@ import com.stockmanager.common.event.OrderReserved;
 import com.stockmanager.common.messaging.ProcessedEventRepository;
 import com.stockmanager.common.web.ConcurrentUpdateException;
 import com.stockmanager.wms.domain.ProductLines;
+import com.stockmanager.wms.domain.ReputawayLine;
+import com.stockmanager.wms.domain.ReputawayOrigin;
 import com.stockmanager.wms.domain.Shipment;
 import com.stockmanager.wms.domain.ShipmentLine;
 import com.stockmanager.wms.domain.ShipmentStatus;
@@ -27,13 +29,16 @@ public class ShipmentService {
     private final ShipmentRepository shipmentRepository;
     private final ProcessedEventRepository processedEventRepository;
     private final ShipmentEventRecorder shipmentEventRecorder;
+    private final ReputawayService reputawayService;
     private final TransactionTemplate transactionTemplate;
 
     ShipmentService(ShipmentRepository shipmentRepository, ProcessedEventRepository processedEventRepository,
-                    ShipmentEventRecorder shipmentEventRecorder, TransactionTemplate transactionTemplate) {
+                    ShipmentEventRecorder shipmentEventRecorder, ReputawayService reputawayService,
+                    TransactionTemplate transactionTemplate) {
         this.shipmentRepository = shipmentRepository;
         this.processedEventRepository = processedEventRepository;
         this.shipmentEventRecorder = shipmentEventRecorder;
+        this.reputawayService = reputawayService;
         this.transactionTemplate = transactionTemplate;
     }
 
@@ -57,10 +62,11 @@ public class ShipmentService {
                     log.info("이미 운송해서 취소하지 않습니다: {}", event.orderNo());
                     return;
                 }
-                boolean putawayPending = putawayPendingOnCancel(shipment);
-                cancelOrFail(event.orderNo(), shipment.status());
-                shipmentEventRecorder.shipmentCanceled(
-                    event.orderNo(), shipment.locationCode(), shipment.lines(), List.of(), putawayPending);
+                if (shipment.status() == ShipmentStatus.CANCELED) {
+                    log.info("이미 취소한 출하입니다: {}", event.orderNo());
+                    return;
+                }
+                cancelOrFail(shipment, List.of());
             });
         } catch (DuplicateKeyException exception) {
             log.info("이미 처리된 이벤트입니다: {} (주문 {})", event.eventId(), event.orderNo());
@@ -75,10 +81,7 @@ public class ShipmentService {
                     "취소할 수 없는 상태입니다: " + orderNo + " (" + shipment.status() + ")");
             }
             requireShortagesWithin(shipment, shortages);
-            boolean putawayPending = putawayPendingOnCancel(shipment);
-            cancelOrFail(orderNo, shipment.status());
-            shipmentEventRecorder.shipmentCanceled(
-                orderNo, shipment.locationCode(), shipment.lines(), shortages, putawayPending);
+            cancelOrFail(shipment, shortages);
             return shipmentRepository.find(orderNo).orElseThrow();
         });
     }
@@ -105,10 +108,25 @@ public class ShipmentService {
         return shipment.status() != ShipmentStatus.READY;
     }
 
-    private void cancelOrFail(String orderNo, ShipmentStatus from) {
-        if (shipmentRepository.changeStatus(orderNo, from, ShipmentStatus.CANCELED) == 0) {
-            throw new ConcurrentUpdateException("취소하는 사이에 상태가 바뀌었습니다. 다시 시도해 주세요: " + orderNo + " (" + from + ")");
+    private void cancelOrFail(Shipment shipment, List<ShipmentLine> shortages) {
+        ShipmentStatus from = shipment.status();
+        if (shipmentRepository.changeStatus(shipment.orderNo(), from, ShipmentStatus.CANCELED) == 0) {
+            throw new ConcurrentUpdateException("취소하는 사이에 상태가 바뀌었습니다. 다시 시도해 주세요: "
+                + shipment.orderNo() + " (" + from + ")");
         }
+        boolean putawayPending = putawayPendingOnCancel(shipment);
+        shipmentEventRecorder.shipmentCanceled(
+            shipment.orderNo(), shipment.locationCode(), shipment.lines(), shortages, putawayPending);
+        if (putawayPending) {
+            reputawayService.open(shipment.locationCode(), new ReputawayOrigin.Shipment(shipment.orderNo()),
+                toReputawayLines(shipment.lines()), toReputawayLines(shortages));
+        }
+    }
+
+    private List<ReputawayLine> toReputawayLines(List<ShipmentLine> lines) {
+        return lines.stream()
+            .map(line -> new ReputawayLine(line.productId(), line.quantity()))
+            .toList();
     }
 
     public Shipment pick(String orderNo){

@@ -4,7 +4,6 @@ import com.stockmanager.wms.application.InboundService;
 import com.stockmanager.wms.domain.Inbound;
 import com.stockmanager.wms.domain.InboundLine;
 import com.stockmanager.wms.domain.InspectionLine;
-import com.stockmanager.wms.domain.PutawayLine;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -68,13 +67,6 @@ class InboundController {
                     @NotNull @PositiveOrZero Integer defectiveQuantity) {
         }
     }
-
-    record PutawayResponse(long productId, int quantity, String binCode) {
-        static PutawayResponse from(PutawayLine line) {
-            return new PutawayResponse(line.productId(), line.quantity(), line.binCode());
-        }
-    }
-
 
     record InboundResponse(long inboundId, String locationCode, Long transferId ,String status, List<Item> items){
         record Item(long productId, int expectedQuantity, Integer goodQuantity, Integer defectiveQuantity) {

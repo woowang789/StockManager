@@ -40,6 +40,8 @@ class TransferRequestTest {
         // 이동에서 생긴 입고 문서가 이동을 가리키므로(외래 키) 입고부터 지운다
         jdbcClient.sql("DELETE FROM inbound_item").update();
         jdbcClient.sql("DELETE FROM inbound").update();
+        jdbcClient.sql("DELETE FROM reputaway_item").update();
+        jdbcClient.sql("DELETE FROM reputaway").update();
         jdbcClient.sql("DELETE FROM transfer_item").update();
         jdbcClient.sql("DELETE FROM transfer").update();
         inventoryStub.resetAll();
