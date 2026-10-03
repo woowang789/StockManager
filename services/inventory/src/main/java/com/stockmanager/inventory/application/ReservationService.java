@@ -7,21 +7,16 @@ import com.stockmanager.inventory.domain.StockMovementCommand;
 import com.stockmanager.inventory.domain.StockState;
 import com.stockmanager.inventory.infrastructure.ReservationRepository;
 import com.stockmanager.inventory.infrastructure.StockMovementRepository;
-import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 public class ReservationService {
-
-    private static final int MAX_ATTEMPTS = 5;
 
     private final ReservationRepository reservationRepository;
     private final StockMovementRepository stockMovementRepository;
@@ -37,25 +32,7 @@ public class ReservationService {
 
     public long reserve(ReserveCommand command, String actor) {
         StockMovementCommand movement = toMovement(command, actor);
-        for(int attempt = 1; ; attempt ++){
-            try {
-                return reserveOnce(command, movement);
-            } catch (CannotAcquireLockException exception) {
-                if (attempt == MAX_ATTEMPTS){
-                    throw exception;
-                }
-                backOff(attempt);
-            }
-        }
-    }
-
-    private void backOff(int attempt) {
-        try {
-            Thread.sleep(Duration.ofMillis(ThreadLocalRandom.current().nextLong(5L * attempt, 15L * attempt)));
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException(exception);
-        }
+        return DeadlockRetry.run(() -> reserveOnce(command, movement));
     }
 
     private long reserveOnce(ReserveCommand command, StockMovementCommand movement) {
