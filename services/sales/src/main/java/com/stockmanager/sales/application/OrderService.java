@@ -11,17 +11,14 @@ import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 public class OrderService {
@@ -29,8 +26,6 @@ public class OrderService {
     private static final Logger log = LoggerFactory.getLogger(OrderService.class);
 
     private static final String REF_TYPE = "ORDER";
-
-    private static final int MAX_ATTEMPTS = 5;
 
     private final SalesOrderRepository salesOrderRepository;
     private final InventoryClient inventoryClient;
@@ -49,26 +44,7 @@ public class OrderService {
     }
 
     public SalesOrder place(String orderNo, List<OrderLine> lines) {
-        for (int attempt = 1;; attempt++ ) {
-            try {
-                return placeOnce(orderNo, lines);
-            } catch (CannotAcquireLockException exception) {
-                if (attempt == MAX_ATTEMPTS) {
-                    throw exception;
-                }
-                backOff(attempt);
-            }
-        }
-
-    }
-
-    private void backOff(int attempt) {
-        try {
-            Thread.sleep(Duration.ofMillis(ThreadLocalRandom.current().nextLong(5L * attempt, 15L * attempt)));
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException(exception);
-        }
+        return DeadlockRetry.run(() -> placeOnce(orderNo, lines));
     }
 
     private SalesOrder placeOnce(String orderNo, List<OrderLine> lines) {

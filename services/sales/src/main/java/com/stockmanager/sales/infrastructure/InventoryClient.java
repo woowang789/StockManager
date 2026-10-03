@@ -10,9 +10,18 @@ public interface InventoryClient {
     @PostExchange("/reservations")
     void reserve(@RequestBody ReservationRequest request);
 
-    record ReservationRequest(String refType, String refId, String locationCode, List<Item> items){
+    record ReservationRequest(String refType, String refId, String locationCode, List<Item> items) {
 
         public record Item(long productId, int quantity) {
         }
     }
+
+    @PostExchange("/pos-deductions")
+    void deduct(@RequestBody PosDeductionRequest request);
+
+    record PosDeductionRequest(String refType, String refId, String locationCode, List<Item> items) {
+        public record Item(long productId, int quantity) {
+        }
+    }
+
 }
