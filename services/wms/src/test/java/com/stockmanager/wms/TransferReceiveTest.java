@@ -60,6 +60,10 @@ class TransferReceiveTest {
         jdbcClient.sql("DELETE FROM transfer").update();
         jdbcClient.sql("DELETE FROM product_bin").update();
         jdbcClient.sql("DELETE FROM outbox").update();
+
+        jdbcClient.sql("DELETE FROM product").update();
+        jdbcClient.sql("INSERT INTO product (id, sku, name) VALUES (1, 'SKU-1', '상품 1')").update();
+
         inventoryStub.resetAll();
         inventoryStub.stubFor(post("/reservations").willReturn(okJson("{\"movementId\":1}")));
     }

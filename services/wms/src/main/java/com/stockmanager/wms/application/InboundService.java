@@ -12,6 +12,7 @@ import com.stockmanager.wms.domain.PutawayLine;
 import com.stockmanager.wms.infrastructure.InboundEventRecorder;
 import com.stockmanager.wms.infrastructure.InboundRepository;
 import com.stockmanager.wms.infrastructure.ProductBinRepository;
+import com.stockmanager.wms.infrastructure.ProductRepository;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -26,14 +27,17 @@ import java.util.stream.Collectors;
 public class InboundService {
 
     private final InboundRepository inboundRepository;
+    private final ProductRepository productRepository;
     private final ProductBinService productBinService;
     private final TransferService transferService;
     private final InboundEventRecorder inboundEventRecorder;
     private final TransactionTemplate transactionTemplate;
 
-    InboundService(InboundRepository inboundRepository,ProductBinService productBinService,
-                   TransferService transferService, InboundEventRecorder inboundEventRecorder, TransactionTemplate transactionTemplate) {
+    InboundService(InboundRepository inboundRepository,ProductRepository productRepository,
+                   ProductBinService productBinService, TransferService transferService,
+                   InboundEventRecorder inboundEventRecorder, TransactionTemplate transactionTemplate) {
         this.inboundRepository = inboundRepository;
+        this.productRepository = productRepository;
         this.productBinService = productBinService;
         this.transferService = transferService;
         this.inboundEventRecorder = inboundEventRecorder;
@@ -42,6 +46,7 @@ public class InboundService {
 
     public Inbound arrive(String locationCode, List<InboundLine> lines) {
         ProductLines.requireDistinct(lines, InboundLine::productId);
+        requireRegistered(lines);
         return transactionTemplate.execute(status -> {
             long inboundId = inboundRepository.insert(locationCode, new InboundOrigin.Supplier(), lines);
             return inboundRepository.find(inboundId).orElseThrow();
@@ -105,6 +110,14 @@ public class InboundService {
     public Inbound find(long inboundId) {
         return inboundRepository.find(inboundId)
             .orElseThrow(() -> new IllegalArgumentException("입고 문서가 없습니다: " + inboundId));
+    }
+
+    private void requireRegistered(List<InboundLine> lines) {
+        List<Long> unregistered = productRepository.findUnregistered(
+            lines.stream().map(InboundLine::productId).toList());
+        if (!unregistered.isEmpty()) {
+            throw new IllegalArgumentException("등록되지 않은 상품이 있습니다: 상품 " + unregistered);
+        }
     }
 
     private void requireNoMoreThanSent(Inbound inbound, List<InspectionLine> results) {

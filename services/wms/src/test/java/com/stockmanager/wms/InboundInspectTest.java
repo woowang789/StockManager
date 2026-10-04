@@ -38,6 +38,10 @@ class InboundInspectTest {
         jdbcClient.sql("DELETE FROM inbound_item").update();
         jdbcClient.sql("DELETE FROM inbound").update();
         jdbcClient.sql("DELETE FROM outbox").update();
+
+        jdbcClient.sql("DELETE FROM product").update();
+        jdbcClient.sql("INSERT INTO product (id, sku, name) VALUES (1, 'SKU-1', '상품 1'), (2, 'SKU-2', '상품 2')")
+            .update();
     }
 
     @Test
@@ -57,6 +61,16 @@ class InboundInspectTest {
             List.of(InboundLine.expected(1, 10), InboundLine.expected(1, 5))))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("같은 상품이 두 줄로 들어 있습니다: 상품 1");
+        assertThat(inboundCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("등록되지 않은 상품이 있으면 입고를 받지 않는다")
+    void rejectsUnregisteredProductOnArrival() {
+        assertThatThrownBy(() -> inboundService.arrive("DC",
+            List.of(InboundLine.expected(1, 10), InboundLine.expected(99, 5))))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("등록되지 않은 상품이 있습니다: 상품 [99]");
         assertThat(inboundCount()).isZero();
     }
 

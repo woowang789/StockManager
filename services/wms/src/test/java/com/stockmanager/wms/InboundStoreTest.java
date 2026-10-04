@@ -38,6 +38,9 @@ class InboundStoreTest {
         jdbcClient.sql("DELETE FROM inbound").update();
         jdbcClient.sql("DELETE FROM product_bin").update();
         jdbcClient.sql("DELETE FROM outbox").update();
+
+        jdbcClient.sql("DELETE FROM product").update();
+        jdbcClient.sql("INSERT INTO product (id, sku, name) VALUES (1, 'SKU-1', '상품 1')").update();
     }
 
     @Test
