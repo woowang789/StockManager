@@ -41,9 +41,19 @@ class ProductReplicaTest {
     @Test
     @DisplayName("ProductRegistered를 받으면 상품 정보를 복제해 둔다")
     void replicatesRegisteredProduct() {
-        publishRegistered(101, "SKU-101", "무선 마우스");
+        publish("ProductRegistered", 101, "SKU-101", "무선 마우스");
 
-        assertThat(waitForProduct(101)).isEqualTo("SKU-101 무선 마우스");
+        assertThat(waitForProduct(101, "SKU-101 무선 마우스")).isEqualTo("SKU-101 무선 마우스");
+    }
+
+    @Test
+    @DisplayName("ProductUpdated를 받으면 복제본을 고친다")
+    void appliesUpdatedProduct() {
+        // 같은 상품은 같은 키라 같은 파티션으로 간다. 등록보다 수정이 먼저 적히지 않는다
+        publish("ProductRegistered", 103, "SKU-103", "모니터");
+        publish("ProductUpdated", 103, "SKU-103", "27인치 모니터");
+
+        assertThat(waitForProduct(103, "SKU-103 27인치 모니터")).isEqualTo("SKU-103 27인치 모니터");
     }
 
     @Test
@@ -56,26 +66,25 @@ class ProductReplicaTest {
         assertThat(productCount()).isEqualTo(1);
     }
 
-    private void publishRegistered(long productId, String sku, String name) {
+    private void publish(String eventType, long productId, String sku, String name) {
         String payload = """
-                {"eventId":"evt-%d","productId":%d,"sku":"%s","name":"%s","occurredAt":"2026-10-04T00:00:00Z"}
-                """.formatted(productId, productId, sku, name);
+                {"eventId":"%s-%d","productId":%d,"sku":"%s","name":"%s","occurredAt":"2026-10-04T00:00:00Z"}
+                """.formatted(eventType, productId, productId, sku, name);
         kafkaTemplate.send(new ProducerRecord<>(TOPIC, null, String.valueOf(productId), payload,
                 List.of(new RecordHeader(EventHeaders.EVENT_TYPE,
-                    "ProductRegistered".getBytes(StandardCharsets.UTF_8)))))
+                    eventType.getBytes(StandardCharsets.UTF_8)))))
             .join();
     }
 
-    private String waitForProduct(long productId) {
+    // 기대한 모습이 될 때까지 기다린다. 시간이 다 되면 마지막에 본 모습을 돌려준다
+    private String waitForProduct(long productId, String expected) {
         long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
-        while (System.nanoTime() < deadline) {
-            String product = productOf(productId);
-            if (product != null) {
-                return product;
-            }
+        String product = productOf(productId);
+        while (!expected.equals(product) && System.nanoTime() < deadline) {
             sleep(Duration.ofMillis(200));
+            product = productOf(productId);
         }
-        return null;
+        return product;
     }
 
     private String productOf(long productId) {

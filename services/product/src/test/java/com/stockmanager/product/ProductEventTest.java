@@ -2,6 +2,7 @@ package com.stockmanager.product;
 
 import com.stockmanager.common.event.EventHeaders;
 import com.stockmanager.common.event.ProductRegistered;
+import com.stockmanager.common.event.ProductUpdated;
 import com.stockmanager.product.application.ProductService;
 import com.stockmanager.product.domain.Product;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -21,6 +22,7 @@ import org.testcontainers.kafka.KafkaContainer;
 import tools.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -72,7 +74,7 @@ class ProductEventTest {
     void publishesProductRegistered() {
         Product product = productService.register("EVT-001", "무선 마우스");
 
-        ConsumerRecord<String, String> record = waitForRecord(String.valueOf(product.getId()));
+        ConsumerRecord<String, String> record = waitForRecords(String.valueOf(product.getId()), 1).getFirst();
         assertThat(eventTypeOf(record)).isEqualTo("ProductRegistered");
 
         ProductRegistered event = objectMapper.readValue(record.value(), ProductRegistered.class);
@@ -80,6 +82,30 @@ class ProductEventTest {
         assertThat(event.sku()).isEqualTo("EVT-001");
         assertThat(event.name()).isEqualTo("무선 마우스");
         assertThat(event.eventId()).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("고치면 ProductUpdated가 등록과 같은 키로 그다음에 발행된다")
+    void publishesProductUpdatedAfterRegistered() {
+        Product product = productService.register("EVT-003", "모니터");
+        productService.change(product.getId(), 0, "EVT-003", "27인치 모니터");
+
+        List<ConsumerRecord<String, String>> records = waitForRecords(String.valueOf(product.getId()), 2);
+        assertThat(records).extracting(this::eventTypeOf).containsExactly("ProductRegistered", "ProductUpdated");
+
+        ProductUpdated event = objectMapper.readValue(records.get(1).value(), ProductUpdated.class);
+        assertThat(event.name()).isEqualTo("27인치 모니터");
+    }
+
+    @Test
+    @DisplayName("고쳤는데 바뀐 것이 없으면 version도 그대로고 알리지 않는다")
+    void publishesNothingWhenNothingChanged() {
+        Product product = productService.register("EVT-004", "마우스 패드");
+
+        Product unchanged = productService.change(product.getId(), 0, "EVT-004", "마우스 패드").orElseThrow();
+
+        assertThat(unchanged.getVersion()).isZero();
+        assertThat(updatedEventCount(product.getId())).isZero();
     }
 
     @Test
@@ -97,20 +123,32 @@ class ProductEventTest {
         assertThat(productCountOf("EVT-002")).isZero();
     }
 
-    private ConsumerRecord<String, String> waitForRecord(String productId) {
+    // 같은 키의 레코드를 받은 순서대로 모은다. 같은 파티션이라 받은 순서가 곧 발행 순서다
+    private List<ConsumerRecord<String, String>> waitForRecords(String productId, int count) {
+        List<ConsumerRecord<String, String>> found = new ArrayList<>();
         long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
-        while (System.nanoTime() < deadline) {
+        while (found.size() < count && System.nanoTime() < deadline) {
             for (ConsumerRecord<String, String> record : consumer.poll(Duration.ofMillis(500))) {
                 if (productId.equals(record.key())) {
-                    return record;
+                    found.add(record);
                 }
             }
         }
-        throw new AssertionError("발행되지 않았습니다: 상품 " + productId);
+        if (found.size() < count) {
+            throw new AssertionError("발행되지 않았습니다: 상품 " + productId + ", " + found.size() + "건");
+        }
+        return found;
     }
 
     private String eventTypeOf(ConsumerRecord<String, String> record) {
         return new String(record.headers().lastHeader(EventHeaders.EVENT_TYPE).value(), StandardCharsets.UTF_8);
+    }
+
+    private int updatedEventCount(long productId) {
+        return jdbcClient.sql("SELECT COUNT(*) FROM outbox WHERE event_type = 'ProductUpdated' AND message_key = :key")
+            .param("key", String.valueOf(productId))
+            .query(Integer.class)
+            .single();
     }
 
     private int productCountOf(String sku) {

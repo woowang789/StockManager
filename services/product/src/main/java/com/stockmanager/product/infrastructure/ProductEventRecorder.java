@@ -1,6 +1,7 @@
 package com.stockmanager.product.infrastructure;
 
 import com.stockmanager.common.event.ProductRegistered;
+import com.stockmanager.common.event.ProductUpdated;
 import com.stockmanager.common.messaging.OutboxRepository;
 import com.stockmanager.product.domain.Product;
 import org.springframework.stereotype.Component;
@@ -20,6 +21,12 @@ public class ProductEventRecorder {
 
     public void productRegistered(Product product) {
         ProductRegistered event = new ProductRegistered(
+            UUID.randomUUID().toString(), product.getId(), product.getSku(), product.getName(), Instant.now());
+        outboxRepository.append(TOPIC, String.valueOf(product.getId()), event);
+    }
+
+    public void productUpdated(Product product) {
+        ProductUpdated event = new ProductUpdated(
             UUID.randomUUID().toString(), product.getId(), product.getSku(), product.getName(), Instant.now());
         outboxRepository.append(TOPIC, String.valueOf(product.getId()), event);
     }

@@ -2,6 +2,7 @@ package com.stockmanager.wms.infrastructure;
 
 import com.stockmanager.common.event.EventHeaders;
 import com.stockmanager.common.event.ProductRegistered;
+import com.stockmanager.common.event.ProductUpdated;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -14,6 +15,7 @@ import tools.jackson.databind.ObjectMapper;
 class ProductEventListener {
 
     private static final String PRODUCT_REGISTERED = ProductRegistered.class.getSimpleName();
+    private static final String PRODUCT_UPDATED = ProductUpdated.class.getSimpleName();
 
     private static final Logger log = LoggerFactory.getLogger(ProductEventListener.class);
 
@@ -29,6 +31,11 @@ class ProductEventListener {
     void onProductEvent(@Header(EventHeaders.EVENT_TYPE) String eventType, @Payload String payload) {
         if (PRODUCT_REGISTERED.equals(eventType)) {
             ProductRegistered event = objectMapper.readValue(payload, ProductRegistered.class);
+            productRepository.save(event.productId(), event.sku(), event.name());
+            return;
+        }
+        if (PRODUCT_UPDATED.equals(eventType)) {
+            ProductUpdated event = objectMapper.readValue(payload, ProductUpdated.class);
             productRepository.save(event.productId(), event.sku(), event.name());
             return;
         }

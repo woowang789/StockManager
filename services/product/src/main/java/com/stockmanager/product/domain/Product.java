@@ -5,6 +5,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.time.Instant;
 
 @Entity
@@ -21,6 +22,9 @@ public class Product {
 
     private Instant createdAt;
 
+    @Version
+    private long version;
+
     protected Product() {
     }
 
@@ -34,6 +38,15 @@ public class Product {
         return new Product(sku, name);
     }
 
+    public boolean change(String sku, String name) {
+        if (this.sku.equals(sku) && this.name.equals(name)) {
+            return false;
+        }
+        this.sku = sku;
+        this.name = name;
+        return true;
+    }
+
     public Long getId() {
         return id;
     }
@@ -44,5 +57,9 @@ public class Product {
 
     public String getName() {
         return name;
+    }
+
+    public long getVersion() {
+        return version;
     }
 }
