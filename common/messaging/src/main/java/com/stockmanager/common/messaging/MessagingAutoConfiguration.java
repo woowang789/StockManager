@@ -1,5 +1,7 @@
 package com.stockmanager.common.messaging;
 
+import io.micrometer.tracing.Tracer;
+import io.micrometer.tracing.propagation.Propagator;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -10,8 +12,9 @@ import tools.jackson.databind.ObjectMapper;
 public class MessagingAutoConfiguration {
 
     @Bean
-    OutboxRepository outboxRepository(JdbcClient jdbcClient, ObjectMapper objectMapper) {
-        return new OutboxRepository(jdbcClient, objectMapper);
+    OutboxRepository outboxRepository(JdbcClient jdbcClient, ObjectMapper objectMapper, Tracer tracer,
+                                      Propagator propagator) {
+        return new OutboxRepository(jdbcClient, objectMapper, tracer, propagator);
     }
 
     @Bean

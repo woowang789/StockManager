@@ -29,6 +29,9 @@ spring:
           X-User-Id: sales
   kafka:
     bootstrap-servers: localhost:9092
+    listener:
+      # 받은 레코드의 traceparent로 이벤트를 보낸 요청의 trace를 이어받는다
+      observation-enabled: true
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.StringSerializer

@@ -9,5 +9,6 @@ dependencies {
     api libs.spring.kafka
     api libs.spring.boot.autoconfigure
     api libs.jackson.databind
+    api libs.micrometer.tracing
     implementation libs.slf4j.api
 }

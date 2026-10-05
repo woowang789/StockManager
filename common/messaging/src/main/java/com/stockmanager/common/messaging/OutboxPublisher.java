@@ -2,10 +2,12 @@ package com.stockmanager.common.messaging;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import com.stockmanager.common.event.EventHeaders;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.header.internals.RecordHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,7 +42,11 @@ public class OutboxPublisher {
     }
 
     private ProducerRecord<String,String> toRecord(OutboxMessage message){
-        return new ProducerRecord<>(message.topic(), null, message.messageKey(), message.payload(),
-            List.of(new RecordHeader(EventHeaders.EVENT_TYPE, message.eventType().getBytes(StandardCharsets.UTF_8))));
+        List<Header> headers = new ArrayList<>();
+        headers.add(new RecordHeader(EventHeaders.EVENT_TYPE, message.eventType().getBytes(StandardCharsets.UTF_8)));
+        message.traceHeaders().forEach((name, value) ->
+            headers.add(new RecordHeader(name, value.getBytes(StandardCharsets.UTF_8))));
+        return new ProducerRecord<>(message.topic(), null, message.messageKey(), message.payload(), headers);
     }
+
 }

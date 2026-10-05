@@ -10,6 +10,9 @@ spring:
     fail-on-missing-locations: true
   kafka:
     bootstrap-servers: localhost:9092
+    listener:
+      # 받은 레코드의 traceparent로 이벤트를 보낸 요청의 trace를 이어받는다
+      observation-enabled: true
     consumer:
       group-id: inventory
       # 진도 기록이 없을 때(처음 뜰 때)만 쓰인다. 켜지기 전에 쌓인 이벤트를 놓치지 않는다

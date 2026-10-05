@@ -2,6 +2,7 @@ package com.stockmanager.sales;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.stockmanager.common.event.EventHeaders;
@@ -32,16 +33,26 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.testcontainers.kafka.KafkaContainer;
 import tools.jackson.databind.ObjectMapper;
 
 @Import({TestcontainersConfiguration.class, InventoryStubConfiguration.class})
 @SpringBootTest
+@AutoConfigureMockMvc
 class OrderEventTest {
 
     private static final String TOPIC = "sales.order";
+
+    private static final String TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736";
+
+    @Autowired
+    MockMvc mockMvc;
 
     @Autowired
     OrderService orderService;
@@ -127,6 +138,26 @@ class OrderEventTest {
         assertThat(recordsOf("EVT-3", Duration.ofSeconds(10))).hasSize(1);
     }
 
+    @Test
+    @DisplayName("주문한 요청의 trace와 사용자 ID가 이벤트 헤더에 실려 나간다")
+    void publishesTraceOfRequest() throws Exception {
+        inventoryStub.stubFor(post("/reservations").willReturn(okJson("{\"movementId\":1}")));
+
+        mockMvc.perform(MockMvcRequestBuilders.post("/orders")
+                .header("traceparent", "00-" + TRACE_ID + "-00f067aa0ba902b7-01")
+                .header("X-User-Id", "customer-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                                {"orderNo":"EVT-4","items":[{"productId":1,"quantity":3}]}
+                                """))
+            .andExpect(status().isOk());
+
+        // 발행기가 요청이 끝난 뒤 따로 보냈는데도, 주문한 요청의 trace와 사용자 ID가 그대로 실렸다
+        ConsumerRecord<String, String> record = recordsOf("EVT-4", Duration.ofSeconds(10)).getFirst();
+        assertThat(headerOf(record, "traceparent")).contains(TRACE_ID);
+        assertThat(headerOf(record, "X-User-Id")).isEqualTo("customer-1");
+    }
+
     private void confirmPendingConcurrently() throws Exception {
         CountDownLatch start = new CountDownLatch(1);
         List<Future<?>> results = new ArrayList<>();
@@ -162,6 +193,11 @@ class OrderEventTest {
                 found.add(record);
             }
         });
+    }
+
+    private String headerOf(ConsumerRecord<String, String> record, String name) {
+        Header header = record.headers().lastHeader(name);
+        return header == null ? null : new String(header.value(), StandardCharsets.UTF_8);
     }
 
     private boolean isOrderReserved(ConsumerRecord<String, String> record) {

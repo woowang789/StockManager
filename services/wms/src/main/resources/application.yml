@@ -17,6 +17,9 @@ spring:
           X-User-Id: wms
   kafka:
     bootstrap-servers: localhost:9092
+    listener:
+      # 받은 레코드의 traceparent로 이벤트를 보낸 요청의 trace를 이어받는다
+      observation-enabled: true
     consumer:
       # 이 그룹이 어디까지 읽었는지를 카프카가 기억한다. 서비스를 재배포해도 이어서 읽는다
       group-id: wms

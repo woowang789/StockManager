@@ -10,6 +10,7 @@ import com.stockmanager.inventory.domain.ReserveCommand;
 import com.stockmanager.inventory.domain.StockChange;
 import com.stockmanager.inventory.domain.StockState;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.header.internals.RecordHeader;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -21,13 +22,17 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.kafka.core.KafkaTemplate;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 class ShipmentApplyTest {
 
     private static final String TOPIC = "wms.shipment";
+
+    private static final String TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736";
 
     @Autowired
     ReservationService reservationService;
@@ -88,6 +93,19 @@ class ShipmentApplyTest {
         assertThat(quantityOf("reserved")).isEqualTo(3);
     }
 
+    @Test
+    @DisplayName("운송을 확정한 요청의 trace가 SHIP 전표까지 이어진다")
+    void recordsTraceOfShippingRequest() {
+        givenReservedOrder("ORD-4", 10, 3);
+
+        // wms의 outbox 발행기처럼, 운송을 확정한 요청의 traceparent를 헤더로 싣는다
+        publish("ShipmentShipped", "evt-6", "ORD-4", 3,
+            Map.of("traceparent", "00-" + TRACE_ID + "-00f067aa0ba902b7-01"));
+
+        assertThat(waitForShipMovement("ORD-4")).isEqualTo(1);
+        assertThat(traceIdOfShipMovement("ORD-4")).isEqualTo(TRACE_ID);
+    }
+
 
     private void givenReservedOrder(String orderNo, int stock, int quantity) {
         stockAdjustmentService.adjust(
@@ -97,13 +115,19 @@ class ShipmentApplyTest {
     }
 
     private void publish(String eventType, String eventId, String orderNo, int quantity) {
+        publish(eventType, eventId, orderNo, quantity, Map.of());
+    }
+
+    private void publish(String eventType, String eventId, String orderNo, int quantity,
+                         Map<String, String> traceHeaders) {
         String payload = """
                 {"eventId":"%s","orderNo":"%s","locationCode":"DC","items":[{"productId":1,"quantity":%d}],
                  "occurredAt":"2026-09-25T00:00:00Z"}
                 """.formatted(eventId, orderNo, quantity);
-        kafkaTemplate.send(new ProducerRecord<>(TOPIC, null, orderNo, payload,
-                List.of(new RecordHeader(EventHeaders.EVENT_TYPE, eventType.getBytes(StandardCharsets.UTF_8)))))
-            .join();
+        List<Header> headers = new ArrayList<>();
+        headers.add(new RecordHeader(EventHeaders.EVENT_TYPE, eventType.getBytes(StandardCharsets.UTF_8)));
+        traceHeaders.forEach((name, value) -> headers.add(new RecordHeader(name, value.getBytes(StandardCharsets.UTF_8))));
+        kafkaTemplate.send(new ProducerRecord<>(TOPIC, null, orderNo, payload, headers)).join();
     }
 
     private int waitForShipMovement(String orderNo) {
@@ -116,6 +140,13 @@ class ShipmentApplyTest {
             sleep(Duration.ofMillis(200));
         }
         return 0;
+    }
+
+    private String traceIdOfShipMovement(String orderNo) {
+        return jdbcClient.sql("SELECT trace_id FROM stock_movement WHERE type = 'SHIP' AND ref_id = :refId")
+            .param("refId", orderNo)
+            .query(String.class)
+            .single();
     }
 
     private int shipMovementCount(String orderNo) {
