@@ -2,6 +2,8 @@ package com.stockmanager.inventory.infrastructure;
 
 import com.stockmanager.inventory.domain.StockChange;
 import com.stockmanager.inventory.domain.StockMovementCommand;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.Tracer;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -16,16 +18,20 @@ import java.util.Optional;
 public class StockMovementRepository {
 
     private final JdbcClient jdbcClient;
+    private final Tracer tracer;
 
-    StockMovementRepository(JdbcClient jdbcClient) {
+    StockMovementRepository(JdbcClient jdbcClient, Tracer tracer) {
         this.jdbcClient = jdbcClient;
+        this.tracer = tracer;
     }
 
     public long insertMovement(StockMovementCommand command, Instant occurredAt, Instant recordedAt) {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcClient.sql("""
-                 INSERT INTO stock_movement(type, ref_type, ref_id, idempotency_key , reason, actor, occurred_at, recorded_at)
-                 VALUES (:type, :refType, :refId,:idempotencyKey, :reason, :actor, :occurredAt, :recordedAt)
+                 INSERT INTO stock_movement(type, ref_type, ref_id, idempotency_key , reason, actor, trace_id,
+                                            occurred_at, recorded_at)
+                 VALUES (:type, :refType, :refId,:idempotencyKey, :reason, :actor, :traceId,
+                            :occurredAt, :recordedAt)
                 """)
             .param("type", command.type().name())
             .param("refType", command.refType())
@@ -33,6 +39,7 @@ public class StockMovementRepository {
             .param("idempotencyKey", command.idempotencyKey())
             .param("reason", command.reason())
             .param("actor", command.actor())
+            .param("traceId", currentTraceId())
             .param("occurredAt", utc(occurredAt))
             .param("recordedAt", utc(recordedAt))
             .update(keyHolder);
@@ -70,6 +77,11 @@ public class StockMovementRepository {
             .param("delta", change.delta())
             .param("balanceAfter", balanceAfter)
             .update();
+    }
+
+    private String currentTraceId() {
+        Span span = tracer.currentSpan();
+        return span == null ? null : span.context().traceId();
     }
 
     private LocalDateTime utc(Instant instant) {

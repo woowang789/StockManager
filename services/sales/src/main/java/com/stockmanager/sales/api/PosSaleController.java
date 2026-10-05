@@ -45,7 +45,7 @@ class PosSaleController {
     }
 
 
-    record PosSaleRequest(@NotBlank @Size(max = 50) String receiptNo, @NotEmpty @Valid List<Item> items) {
+    record PosSaleRequest(@NotBlank @Size(max = 50) String receiptNo, @NotEmpty List<@Valid Item> items) {
         record Item(@NotNull Long productId, @NotNull @Positive Integer quantity) {
         }
     }

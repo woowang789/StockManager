@@ -41,7 +41,7 @@ class PosDeductionController {
 
     // 이 엔드포인트만 쓰는 모양이라 여기에 둔다. 다른 컨트롤러가 함께 쓰게 되면 파일로 꺼낸다
     record PosDeductionRequest(@NotBlank String refType, @NotBlank String refId, @NotBlank String locationCode,
-                          @NotEmpty @Valid List<Item> items) {
+                          @NotEmpty List<@Valid Item> items) {
 
         record Item(@NotNull Long productId, @NotNull @Positive Integer quantity) {
         }

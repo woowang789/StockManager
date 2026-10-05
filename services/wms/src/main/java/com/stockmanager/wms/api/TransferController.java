@@ -63,12 +63,12 @@ class TransferController {
     }
 
     record TransferRequest(@NotBlank String fromLocationCode, @NotBlank String toLocationCode,
-                           @NotEmpty @Valid List<Item> items){
+                           @NotEmpty List<@Valid Item> items){
         record Item(@NotNull Long productId, @NotNull @Positive Integer quantity) {
         }
     }
 
-    record ShortageRequest(@NotEmpty @Valid List<Item> items) {
+    record ShortageRequest(@NotEmpty List<@Valid Item> items) {
         record Item(@NotNull Long productId, @NotNull @Positive Integer quantity) {
         }
     }

@@ -16,6 +16,17 @@ spring:
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-
+management:
+  tracing:
+    baggage:
+      # 사용자 ID를 trace와 함께 다음 서비스로 넘긴다. 헤더 이름 그대로 오간다
+      remote-fields: X-User-Id
+      # 로그에 찍을 수 있게 MDC에도 넣는다
+      correlation:
+        fields: X-User-Id
+logging:
+  pattern:
+    # 서비스를 건너 한 요청을 따라갈 수 있게 trace_id, span_id, 사용자 ID를 줄마다 찍는다
+    correlation: "[%X{traceId:-},%X{spanId:-},%X{X-User-Id:-}] "
 server:
   port: 8081

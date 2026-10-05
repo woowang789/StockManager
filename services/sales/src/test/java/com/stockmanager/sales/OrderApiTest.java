@@ -15,11 +15,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
-import static com.github.tomakehurst.wiremock.client.WireMock.equalTo;
-import static com.github.tomakehurst.wiremock.client.WireMock.equalToJson;
-import static com.github.tomakehurst.wiremock.client.WireMock.okJson;
-import static com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor;
-import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo;
+import static com.github.tomakehurst.wiremock.client.WireMock.*;
+import static com.github.tomakehurst.wiremock.client.WireMock.havingExactly;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -31,6 +28,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 class OrderApiTest {
+
+    private static final String TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736";
 
     @Autowired
     MockMvc mockMvc;
@@ -99,6 +98,26 @@ class OrderApiTest {
         mockMvc.perform(get("/orders/NOPE"))
             .andExpect(status().isNotFound());
     }
+
+    @Test
+    @DisplayName("주문한 요청의 trace와 사용자 ID가 inventory 호출까지 이어진다")
+    void carriesTraceAndUserToInventory() throws Exception {
+        // 게이트웨이가 넘겨준 W3C traceparent(버전-trace_id-부모 span-플래그)와 사용자 ID
+        mockMvc.perform(post("/orders")
+                .header("traceparent", "00-" + TRACE_ID + "-00f067aa0ba902b7-01")
+                .header("X-User-Id", "customer-1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                                {"orderNo":"ORD-T1","items":[{"productId":1,"quantity":1}]}
+                                """))
+            .andExpect(status().isOk());
+
+        // trace_id는 이어지고, 사용자 ID는 설정의 sales 대신 주문한 사용자 하나만 간다
+        inventoryStub.verify(postRequestedFor(urlEqualTo("/reservations"))
+            .withHeader("traceparent", containing(TRACE_ID))
+            .withHeader("X-User-Id", havingExactly("customer-1")));
+    }
+
 
     private ResultActions place(String body) throws Exception {
         return mockMvc.perform(post("/orders")

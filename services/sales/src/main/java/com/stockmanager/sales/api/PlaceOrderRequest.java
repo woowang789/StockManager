@@ -10,7 +10,7 @@ import java.util.List;
 
 public record PlaceOrderRequest(
     @NotBlank @Size(max = 50) String orderNo,
-    @NotEmpty @Valid List<Item> items) {
+    @NotEmpty List<@Valid Item> items) {
 
     public record Item(@NotNull Long productId, @NotNull @Positive Integer quantity) {
     }

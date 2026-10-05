@@ -57,12 +57,12 @@ class InboundController {
         return InboundResponse.from(inboundService.find(inboundId));
     }
 
-    record ArriveRequest(@NotBlank String locationCode, @NotEmpty @Valid List<Item> items){
+    record ArriveRequest(@NotBlank String locationCode, @NotEmpty List<@Valid Item> items){
         record Item(@NotNull Long productId, @NotNull @Positive Integer quantity) {
         }
     }
 
-    record InspectRequest(@NotEmpty @Valid List<Item> items){
+    record InspectRequest(@NotEmpty List<@Valid Item> items){
         record Item(@NotNull Long productId, @NotNull @PositiveOrZero Integer goodQuantity,
                     @NotNull @PositiveOrZero Integer defectiveQuantity) {
         }

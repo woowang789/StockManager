@@ -82,6 +82,20 @@ class GatewayRoutingTest {
     }
 
     @Test
+    @DisplayName("요청마다 trace를 열어 서비스로 넘기고, 사용자 ID는 한 번만 넘긴다")
+    void startsTraceForService() throws Exception {
+        inventoryStub.stubFor(WireMock.get("/stocks/DC/1").willReturn(okJson("{}")));
+
+        mockMvc.perform(get("/stocks/DC/1").header("X-User-Id", "admin-1"))
+            .andExpect(status().isOk());
+
+        // 클라이언트는 trace를 보내지 않았다. 게이트웨이가 연 trace가 W3C traceparent로 넘어간다
+        inventoryStub.verify(getRequestedFor(urlEqualTo("/stocks/DC/1"))
+            .withHeader("traceparent", matching("00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}"))
+            .withHeader("X-User-Id", havingExactly("admin-1")));
+    }
+
+    @Test
     @DisplayName("서비스끼리만 부르는 API는 열지 않는다")
     void doesNotExposeInternalApis() throws Exception {
         mockMvc.perform(post("/reservations").contentType(MediaType.APPLICATION_JSON).content("{}"))

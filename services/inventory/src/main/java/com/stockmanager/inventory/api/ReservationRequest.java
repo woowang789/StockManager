@@ -11,7 +11,7 @@ public record ReservationRequest(
     @NotBlank String refType,
     @NotBlank String refId,
     @NotBlank String locationCode,
-    @NotEmpty @Valid List<Item> items
+    @NotEmpty List<@Valid Item> items
     ) {
 
     public record Item(@NotNull Long productId, @NotNull @Positive Integer quantity) {

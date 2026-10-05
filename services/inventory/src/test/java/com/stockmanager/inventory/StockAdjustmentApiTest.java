@@ -24,6 +24,8 @@ import java.util.List;
 @AutoConfigureMockMvc
 class StockAdjustmentApiTest {
 
+    private static final String TRACE_ID = "4bf92f3577b34da6a3ce929d0e0e4736";
+
     @Autowired
     MockMvc mockMvc;
 
@@ -95,7 +97,21 @@ class StockAdjustmentApiTest {
         assertThat(entries("DC", 1)).isEmpty();
     }
 
+    @Test
+    @DisplayName("전표에 요청의 trace_id가 남는다")
+    void recordsTraceIdOfRequest() throws Exception{
+        // 앞 서비스가 넘겨준 W3C traceparent(버전-trace_id-부모 span-플래그)
+        mockMvc.perform(post("/adjustments")
+                .header("traceparent", "00-" + TRACE_ID + "-00f067aa0ba902b7-01")
+                .header("X-User-Id", "admin")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                                {"locationCode":"DC","productId":1,"state":"AVAILABLE","delta":10,"reason":"COUNT_DIFF"}
+                                """))
+            .andExpect(status().isOk());
 
+        assertThat(traceIdOfLastMovement()).isEqualTo(TRACE_ID);
+    }
 
 
     private ResultActions adjust(String body) throws Exception {
@@ -124,6 +140,12 @@ class StockAdjustmentApiTest {
             .params(locationCode, productId)
             .query(String.class)
             .list();
+    }
+
+    private String traceIdOfLastMovement() {
+        return jdbcClient.sql("SELECT trace_id FROM stock_movement ORDER BY id DESC LIMIT 1")
+            .query(String.class)
+            .single();
     }
 
     private String actorOfLastMovement() {
