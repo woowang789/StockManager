@@ -106,6 +106,29 @@ class ShipmentApplyTest {
         assertThat(traceIdOfShipMovement("ORD-4")).isEqualTo(TRACE_ID);
     }
 
+    @Test
+    @DisplayName("운송을 확정한 사용자가 SHIP 전표의 처리자로 남는다")
+    void recordsUserOfShippingRequest() {
+        givenReservedOrder("ORD-5", 10, 3);
+
+        // wms의 outbox 발행기처럼, 운송을 확정한 요청의 사용자 ID를 헤더로 싣는다
+        publish("ShipmentShipped", "evt-7", "ORD-5", 3, Map.of("X-User-Id", "worker-7"));
+
+        assertThat(waitForShipMovement("ORD-5")).isEqualTo(1);
+        assertThat(actorOfShipMovement("ORD-5")).isEqualTo("worker-7");
+    }
+
+    @Test
+    @DisplayName("사용자 없이 적은 운송이면 wms가 처리자다")
+    void recordsWmsWithoutUser() {
+        givenReservedOrder("ORD-6", 10, 3);
+
+        publish("ShipmentShipped", "evt-8", "ORD-6", 3);
+
+        assertThat(waitForShipMovement("ORD-6")).isEqualTo(1);
+        assertThat(actorOfShipMovement("ORD-6")).isEqualTo("wms");
+    }
+
 
     private void givenReservedOrder(String orderNo, int stock, int quantity) {
         stockAdjustmentService.adjust(
@@ -144,6 +167,13 @@ class ShipmentApplyTest {
 
     private String traceIdOfShipMovement(String orderNo) {
         return jdbcClient.sql("SELECT trace_id FROM stock_movement WHERE type = 'SHIP' AND ref_id = :refId")
+            .param("refId", orderNo)
+            .query(String.class)
+            .single();
+    }
+
+    private String actorOfShipMovement(String orderNo) {
+        return jdbcClient.sql("SELECT actor FROM stock_movement WHERE type = 'SHIP' AND ref_id = :refId")
             .param("refId", orderNo)
             .query(String.class)
             .single();

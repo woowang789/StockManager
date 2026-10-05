@@ -34,17 +34,18 @@ class ShipmentEventListener {
     }
 
     @KafkaListener(topics = "wms.shipment")
-    void onShipmentEvent(@Header(EventHeaders.EVENT_TYPE) String eventType, @Payload String payload) {
+    void onShipmentEvent(@Header(EventHeaders.EVENT_TYPE) String eventType,
+                         @Header(value = EventHeaders.USER_ID, defaultValue = "wms") String actor, @Payload String payload) {
         if (SHIPMENT_SHIPPED.equals(eventType)) {
-            shipmentService.apply(objectMapper.readValue(payload, ShipmentShipped.class));
+            shipmentService.apply(objectMapper.readValue(payload, ShipmentShipped.class),actor);
             return;
         }
         if (SHIPMENT_CANCELED.equals(eventType)) {
-            shipmentService.release(objectMapper.readValue(payload, ShipmentCanceled.class));
+            shipmentService.release(objectMapper.readValue(payload, ShipmentCanceled.class),actor);
             return;
         }
         if (REPUTAWAY_STORED.equals(eventType)) {
-            reputawayService.store(objectMapper.readValue(payload, ReputawayStored.class));
+            reputawayService.store(objectMapper.readValue(payload, ReputawayStored.class),actor);
             return;
         }
         log.debug("아직 처리하지 않는 이벤트입니다: {}", eventType);

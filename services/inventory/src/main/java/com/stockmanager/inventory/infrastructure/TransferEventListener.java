@@ -41,25 +41,26 @@ class TransferEventListener {
     }
 
     @KafkaListener(topics = "wms.transfer")
-    void onTransferEvent(@Header(EventHeaders.EVENT_TYPE) String eventType, @Payload String payload) {
+    void onTransferEvent(@Header(EventHeaders.EVENT_TYPE) String eventType,
+                         @Header(value = EventHeaders.USER_ID, defaultValue = "wms") String actor, @Payload String payload) {
         if (TRANSFER_DISPATCHED.equals(eventType)) {
-            transferService.dispatch(objectMapper.readValue(payload, TransferDispatched.class));
+            transferService.dispatch(objectMapper.readValue(payload, TransferDispatched.class),actor);
             return;
         }
         if (TRANSFER_RECEIVED.equals(eventType)) {
-            transferService.receive(objectMapper.readValue(payload, TransferReceived.class));
+            transferService.receive(objectMapper.readValue(payload, TransferReceived.class),actor);
             return;
         }
         if (TRANSFER_CANCELED.equals(eventType)) {
-            transferService.release(objectMapper.readValue(payload, TransferCanceled.class));
+            transferService.release(objectMapper.readValue(payload, TransferCanceled.class),actor);
             return;
         }
         if (INBOUND_STORED.equals(eventType)) {
-            inboundService.store(objectMapper.readValue(payload, InboundStored.class));
+            inboundService.store(objectMapper.readValue(payload, InboundStored.class),actor);
             return;
         }
         if (REPUTAWAY_STORED.equals(eventType)) {
-            reputawayService.store(objectMapper.readValue(payload, ReputawayStored.class));
+            reputawayService.store(objectMapper.readValue(payload, ReputawayStored.class),actor);
             return;
         }
         log.debug("아직 처리하지 않는 이벤트입니다: {}", eventType);

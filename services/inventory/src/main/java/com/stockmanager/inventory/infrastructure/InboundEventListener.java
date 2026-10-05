@@ -30,13 +30,14 @@ class InboundEventListener {
     }
 
     @KafkaListener(topics = "wms.inbound")
-    void onInboundEvent(@Header(EventHeaders.EVENT_TYPE) String eventType, @Payload String payload) {
+    void onInboundEvent(@Header(EventHeaders.EVENT_TYPE) String eventType,
+                        @Header(value = EventHeaders.USER_ID, defaultValue = "wms") String actor, @Payload String payload) {
         if (INBOUND_INSPECTED.equals(eventType)) {
-            inboundService.apply(objectMapper.readValue(payload, InboundInspected.class));
+            inboundService.apply(objectMapper.readValue(payload, InboundInspected.class), actor);
             return;
         }
         if(INBOUND_STORED.equals(eventType)){
-            inboundService.store(objectMapper.readValue(payload, InboundStored.class));
+            inboundService.store(objectMapper.readValue(payload, InboundStored.class), actor);
             return;
         }
         log.debug("아직 처리하지 않는 이벤트입니다: {}",eventType);

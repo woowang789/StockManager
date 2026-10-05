@@ -31,8 +31,8 @@ public class ReputawayService {
         this.transactionTemplate = transactionTemplate;
     }
 
-    public void store(ReputawayStored event) {
-        StockMovementCommand movement = toMovement(event);
+    public void store(ReputawayStored event, String actor) {
+        StockMovementCommand movement = toMovement(event,actor);
         if (stockMovementRepository.findIdByIdempotencyKey(movement.idempotencyKey()).isPresent()) {
             log.info("이미 반영한 재적치입니다: {}", movement.idempotencyKey());
             return;
@@ -44,7 +44,7 @@ public class ReputawayService {
         }
     }
 
-    private StockMovementCommand toMovement(ReputawayStored event) {
+    private StockMovementCommand toMovement(ReputawayStored event, String actor) {
         List<StockChange> changes = new ArrayList<>();
         event.items().forEach(item -> {
             changes.add(new StockChange(
@@ -53,7 +53,7 @@ public class ReputawayService {
                 event.locationCode(), item.productId(), StockState.AVAILABLE, item.quantity()));
         });
         return new StockMovementCommand(MovementType.PUTAWAY, REF_TYPE, String.valueOf(event.reputawayId()),
-            null, "wms", changes);
+            null, actor, changes);
     }
 }
 

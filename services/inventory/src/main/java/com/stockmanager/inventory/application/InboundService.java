@@ -32,8 +32,8 @@ public class InboundService {
         this.transactionTemplate = transactionTemplate;
     }
 
-    public void apply(InboundInspected event) {
-        StockMovementCommand movement = toMovement(event);
+    public void apply(InboundInspected event, String actor) {
+        StockMovementCommand movement = toMovement(event, actor);
         if (stockMovementRepository.findIdByIdempotencyKey(movement.idempotencyKey()).isPresent()) {
             log.info("이미 반영한 입고입니다: {}", movement.idempotencyKey());
             return;
@@ -45,8 +45,8 @@ public class InboundService {
         }
     }
 
-    public void store(InboundStored event) {
-        StockMovementCommand movement = toMovement(event);
+    public void store(InboundStored event, String actor) {
+        StockMovementCommand movement = toMovement(event,actor);
         if (stockMovementRepository.findIdByIdempotencyKey(movement.idempotencyKey()).isPresent()) {
             log.info("이미 반영한 적치입니다: {}", movement.idempotencyKey());
             return;
@@ -58,7 +58,7 @@ public class InboundService {
         }
     }
 
-    private StockMovementCommand toMovement(InboundStored event) {
+    private StockMovementCommand toMovement(InboundStored event, String actor) {
         List<StockChange> changes = new ArrayList<>();
         event.items().forEach(item -> {
             changes.add(new StockChange(
@@ -67,10 +67,10 @@ public class InboundService {
                 event.locationCode(), item.productId(), StockState.AVAILABLE, item.quantity()));
         });
         return new StockMovementCommand(MovementType.PUTAWAY, REF_TYPE, String.valueOf(event.inboundId()),
-            null, "wms", changes);
+            null, actor, changes);
     }
 
-    private StockMovementCommand toMovement(InboundInspected event) {
+    private StockMovementCommand toMovement(InboundInspected event, String actor) {
         StockState goodState = event.putawayPending() ? StockState.PUTAWAY_WAIT : StockState.AVAILABLE;
         List<StockChange> changes = new ArrayList<>();
         event.items().forEach(item ->{
@@ -84,6 +84,6 @@ public class InboundService {
             }
         });
         return new StockMovementCommand(MovementType.RECEIVE, REF_TYPE, String.valueOf(event.inboundId()),
-            null, "wms", changes);
+            null, actor, changes);
     }
 }

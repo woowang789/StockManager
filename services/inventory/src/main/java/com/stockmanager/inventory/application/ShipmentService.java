@@ -37,8 +37,8 @@ public class ShipmentService {
         this.transactionTemplate = transactionTemplate;
     }
 
-    public void apply(ShipmentShipped event) {
-        StockMovementCommand movement = toMovement(event);
+    public void apply(ShipmentShipped event, String actor) {
+        StockMovementCommand movement = toMovement(event, actor);
         if (stockMovementRepository.findIdByIdempotencyKey(movement.idempotencyKey()).isPresent()) {
             return;
         }
@@ -52,8 +52,8 @@ public class ShipmentService {
         }
     }
 
-    public void release(ShipmentCanceled event) {
-        StockMovementCommand movement = toMovement(event);
+    public void release(ShipmentCanceled event, String actor) {
+        StockMovementCommand movement = toMovement(event, actor);
         if (stockMovementRepository.findIdByIdempotencyKey(movement.idempotencyKey()).isPresent()) {
             return;
         }
@@ -62,7 +62,7 @@ public class ShipmentService {
                 reservationRepository.release(REF_TYPE, event.orderNo());
                 stockMover.move(movement, event.occurredAt());
                 if (!event.shortages().isEmpty()) {
-                    stockMover.move(toShortageMovement(event), event.occurredAt());
+                    stockMover.move(toShortageMovement(event, actor), event.occurredAt());
                 }
             });
         } catch (DuplicateKeyException exception) {
@@ -73,17 +73,17 @@ public class ShipmentService {
         }
     }
 
-    private StockMovementCommand toMovement(ShipmentCanceled event) {
+    private StockMovementCommand toMovement(ShipmentCanceled event, String actor) {
         StockState returnTo = event.putawayPending() ? StockState.PUTAWAY_WAIT : StockState.AVAILABLE;
         List<StockChange> changes = new ArrayList<>();
         event.items().forEach(item -> {
             changes.add(new StockChange(event.locationCode(), item.productId(), StockState.RESERVED, -item.quantity()));
             changes.add(new StockChange(event.locationCode(), item.productId(), returnTo, item.quantity()));
         });
-        return new StockMovementCommand(MovementType.RELEASE, REF_TYPE, event.orderNo(), null, "wms", changes);
+        return new StockMovementCommand(MovementType.RELEASE, REF_TYPE, event.orderNo(), null, actor, changes);
     }
 
-    private StockMovementCommand toShortageMovement(ShipmentCanceled event) {
+    private StockMovementCommand toShortageMovement(ShipmentCanceled event, String actor) {
         StockState from = event.putawayPending() ? StockState.PUTAWAY_WAIT : StockState.AVAILABLE;
         List<StockChange> changes = event.shortages().stream()
             .map(shortage -> new StockChange(
@@ -91,14 +91,14 @@ public class ShipmentService {
             .toList();
 
         return new StockMovementCommand(MovementType.ADJUST, REF_TYPE, event.orderNo(),
-            AdjustmentReason.SHORTAGE.name(), "wms", changes);
+            AdjustmentReason.SHORTAGE.name(), actor, changes);
     }
 
-    private StockMovementCommand toMovement(ShipmentShipped event) {
+    private StockMovementCommand toMovement(ShipmentShipped event,String actor) {
         List<StockChange> changes = event.items().stream()
             .map(item -> new StockChange(
                 event.locationCode(), item.productId(), StockState.RESERVED, -item.quantity()
             )).toList();
-        return new StockMovementCommand(MovementType.SHIP, REF_TYPE, event.orderNo(), null, "wms", changes);
+        return new StockMovementCommand(MovementType.SHIP, REF_TYPE, event.orderNo(), null, actor, changes);
     }
 }

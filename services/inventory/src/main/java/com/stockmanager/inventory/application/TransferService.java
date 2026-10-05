@@ -40,8 +40,8 @@ public class TransferService {
         this.transactionTemplate = transactionTemplate;
     }
 
-    public void dispatch(TransferDispatched event) {
-        StockMovementCommand movement = toMovement(event);
+    public void dispatch(TransferDispatched event, String actor) {
+        StockMovementCommand movement = toMovement(event, actor);
         if (stockMovementRepository.findIdByIdempotencyKey(movement.idempotencyKey()).isPresent()) {
             log.info("이미 반영한 이동입니다: {}", movement.idempotencyKey());
             return;
@@ -56,8 +56,8 @@ public class TransferService {
         }
     }
 
-    public void receive(TransferReceived event) {
-        StockMovementCommand movement = toMovement(event);
+    public void receive(TransferReceived event, String actor) {
+        StockMovementCommand movement = toMovement(event, actor);
         if (stockMovementRepository.findIdByIdempotencyKey(movement.idempotencyKey()).isPresent()) {
             log.info("이미 반영한 도착입니다: {}", movement.idempotencyKey());
             return;
@@ -68,7 +68,7 @@ public class TransferService {
                 stockMover.move(movement, event.occurredAt());
                 if (!losses.isEmpty()) {
                     stockMover.move(new StockMovementCommand(MovementType.ADJUST, REF_TYPE,
-                            String.valueOf(event.transferId()), AdjustmentReason.TRANSIT_LOSS.name(), "wms", losses),
+                            String.valueOf(event.transferId()), AdjustmentReason.TRANSIT_LOSS.name(), actor, losses),
                         event.occurredAt());
                 }
             });
@@ -80,8 +80,8 @@ public class TransferService {
         }
     }
 
-    public void release(TransferCanceled event) {
-        StockMovementCommand movement = toMovement(event);
+    public void release(TransferCanceled event, String actor) {
+        StockMovementCommand movement = toMovement(event, actor);
         if (stockMovementRepository.findIdByIdempotencyKey(movement.idempotencyKey()).isPresent()) {
             log.info("이미 반영한 취소입니다: {}", movement.idempotencyKey());
             return;
@@ -91,7 +91,7 @@ public class TransferService {
                 reservationRepository.release(REF_TYPE, String.valueOf(event.transferId()));
                 stockMover.move(movement, event.occurredAt());
                 if (!event.shortages().isEmpty()) {
-                    stockMover.move(toShortageMovement(event), event.occurredAt());
+                    stockMover.move(toShortageMovement(event, actor), event.occurredAt());
                 }
             });
 
@@ -104,7 +104,7 @@ public class TransferService {
     }
 
 
-    private StockMovementCommand toMovement(TransferReceived event) {
+    private StockMovementCommand toMovement(TransferReceived event, String actor) {
         StockState goodState = event.putawayPending() ? StockState.PUTAWAY_WAIT : StockState.AVAILABLE;
         List<StockChange> changes = new ArrayList<>();
         event.items().forEach(item -> {
@@ -121,7 +121,7 @@ public class TransferService {
             }
         });
         return new StockMovementCommand(MovementType.TRANSFER_RECEIVE, REF_TYPE, String.valueOf(event.transferId()),
-            null, "wms", changes);
+            null, actor, changes);
     }
 
     private Map<Long, Integer> sentBy(TransferReceived event) {
@@ -149,7 +149,7 @@ public class TransferService {
         return losses;
     }
 
-    private StockMovementCommand toMovement(TransferDispatched event) {
+    private StockMovementCommand toMovement(TransferDispatched event, String actor) {
         List<StockChange> changes = new ArrayList<>();
         event.items().forEach(item -> {
             changes.add(new StockChange(
@@ -158,10 +158,10 @@ public class TransferService {
                 event.toLocationCode(), item.productId(), StockState.IN_TRANSIT, item.quantity()));
         });
         return new StockMovementCommand(MovementType.DISPATCH, REF_TYPE, String.valueOf(event.transferId()),
-            null, "wms", changes);
+            null, actor, changes);
     }
 
-    private StockMovementCommand toMovement(TransferCanceled event) {
+    private StockMovementCommand toMovement(TransferCanceled event, String actor) {
         StockState returnTo = returnTo(event);
         List<StockChange> changes = new ArrayList<>();
         event.items().forEach(item -> {
@@ -170,17 +170,17 @@ public class TransferService {
             changes.add(new StockChange(event.fromLocationCode(), item.productId(), returnTo, item.quantity()));
         });
         return new StockMovementCommand(MovementType.RELEASE, REF_TYPE, String.valueOf(event.transferId()),
-            null, "wms", changes);
+            null, actor, changes);
     }
 
-    private StockMovementCommand toShortageMovement(TransferCanceled event) {
+    private StockMovementCommand toShortageMovement(TransferCanceled event, String actor) {
         StockState from = returnTo(event);
         List<StockChange> changes = event.shortages().stream()
             .map(shortage -> new StockChange(
                 event.fromLocationCode(), shortage.productId(), from, -shortage.quantity()))
             .toList();
         return new StockMovementCommand(MovementType.ADJUST, REF_TYPE, String.valueOf(event.transferId()),
-            AdjustmentReason.SHORTAGE.name(), "wms", changes);
+            AdjustmentReason.SHORTAGE.name(), actor, changes);
     }
 
     private StockState returnTo(TransferCanceled event) {

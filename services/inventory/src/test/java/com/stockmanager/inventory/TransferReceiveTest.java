@@ -153,7 +153,7 @@ class TransferReceiveTest {
         TransferReceived event = new TransferReceived("recv-808", 808, "STORE",
             List.of(new TransferReceived.Item(1, 3, 0)), false, Instant.parse("2026-09-30T00:00:00Z"));
 
-        assertThatThrownBy(() -> transferService.receive(event))
+        assertThatThrownBy(() -> transferService.receive(event, "test"))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("상품이동이 반영되지 않은 도착 검수입니다");
         assertThat(movementCount(808, "TRANSFER_RECEIVE")).isZero();
@@ -170,6 +170,20 @@ class TransferReceiveTest {
         assertThat(quantityOf("DC", 1, "available")).isEqualTo(3);
         assertThat(quantityOf("DC", 1, "putaway_wait")).isZero();
 
+    }
+
+    @Test
+    @DisplayName("한 검수로 생긴 두 전표에 같은 처리자가 남는다")
+    void recordsActorOnBothMovements() {
+        dispatched(810, "DC", "STORE", 3);
+
+        // 리스너가 헤더에서 읽어 넘기는 처리자다. 검수 전표와 분실 조정 전표가 함께 생긴다
+        transferService.receive(new TransferReceived("recv-810", 810, "STORE",
+                List.of(new TransferReceived.Item(1, 2, 0)), false, Instant.parse("2026-09-30T00:00:00Z")),
+            "worker-5");
+
+        assertThat(actorOf(810, "TRANSFER_RECEIVE")).isEqualTo("worker-5");
+        assertThat(actorOf(810, "ADJUST")).isEqualTo("worker-5");
     }
 
 
@@ -276,6 +290,17 @@ class TransferReceiveTest {
     private String reasonOf(long transferId, String type) {
         return jdbcClient.sql("""
                         SELECT reason FROM stock_movement
+                        WHERE type = :type AND ref_type = 'TRANSFER' AND ref_id = :refId
+                        """)
+            .param("type", type)
+            .param("refId", String.valueOf(transferId))
+            .query(String.class)
+            .single();
+    }
+
+    private String actorOf(long transferId, String type) {
+        return jdbcClient.sql("""
+                        SELECT actor FROM stock_movement
                         WHERE type = :type AND ref_type = 'TRANSFER' AND ref_id = :refId
                         """)
             .param("type", type)
