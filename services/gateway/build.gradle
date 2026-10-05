@@ -1,0 +1,11 @@
+plugins {
+    id 'stock.service'
+}
+
+dependencies {
+    implementation platform(libs.spring.cloud.bom)
+    implementation libs.spring.cloud.starter.gateway.server.webmvc
+
+    testImplementation libs.spring.boot.starter.webmvc.test
+    testImplementation libs.wiremock.standalone
+}

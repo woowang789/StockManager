@@ -1,0 +1,37 @@
+spring:
+  application:
+    name: gateway
+  cloud:
+    gateway:
+      server:
+        webmvc:
+          # 클라이언트가 부르는 API만 연다. 서비스끼리 부르는 inventory API(/reservations, /pos-deductions)는 열지 않는다
+          routes:
+            - id: product
+              uri: ${services.product.url}
+              predicates:
+                - Path=/products/**
+            - id: sales
+              uri: ${services.sales.url}
+              predicates:
+                - Path=/orders/**,/pos-sales/**
+            - id: wms
+              uri: ${services.wms.url}
+              predicates:
+                - Path=/inbounds/**,/shipments/**,/transfers/**,/reputaways/**,/bins/**
+            - id: inventory
+              uri: ${services.inventory.url}
+              predicates:
+                - Path=/stocks/**,/adjustments/**
+# 서비스 주소. 테스트는 가짜 서버의 주소로 바꿔 넣는다
+services:
+  inventory:
+    url: http://localhost:8081
+  sales:
+    url: http://localhost:8082
+  wms:
+    url: http://localhost:8083
+  product:
+    url: http://localhost:8084
+server:
+  port: 8080
